@@ -1,0 +1,17 @@
+{
+  "name": "upload-csv-jumpseller",
+  "version": "1.0.0",
+  "description": "Servicio para actualizar precios desde CSV usando la API de Jumpseller",
+  "main": "upload-server.js",
+  "scripts": {
+    "start": "node upload-server.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.8",
+    "cors": "^2.8.5",
+    "csv-parser": "^3.0.0",
+    "express": "^4.19.2",
+    "json2csv": "^6.0.0",
+    "multer": "^1.4.5-lts.1"
+  }
+}
