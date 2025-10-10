@@ -1,1 +1,38 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Actualizar Precios desde CSV</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 40px; }
+    h1 { color: #2b5c9e; }
+    form { margin-top: 20px; }
+    input, button { padding: 10px; margin: 5px 0; }
+  </style>
+</head>
+<body>
+  <h1>Actualizar precios desde CSV</h1>
+  <form id="uploadForm" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".csv" required />
+    <button type="submit">Subir y procesar</button>
+  </form>
 
+  <script>
+    document.getElementById("uploadForm").addEventListener("submit", async e => {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const res = await fetch("/upload", { method: "POST", body: formData });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "productos_actualizados.csv";
+        a.click();
+      } else {
+        alert("Error al procesar el archivo");
+      }
+    });
+  </script>
+</body>
+</html>
