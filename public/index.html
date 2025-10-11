@@ -1,68 +1,126 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <title>Subir archivo Excel</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Subir novedades - Previsualizar y confirmar</title>
   <style>
-    body { font-family: sans-serif; padding: 20px; }
-    table { border-collapse: collapse; width: 100%; margin-top: 15px; }
-    th, td { border: 1px solid #aaa; padding: 8px; text-align: left; }
-    th { background: #eee; }
-    button { margin-top: 10px; padding: 10px 15px; }
+    body { font-family: Arial, sans-serif; padding: 18px; max-width: 980px; margin: auto; }
+    h1 { margin-bottom: 6px; }
+    form { margin-bottom: 12px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #f3f3f3; }
+    button { padding: 8px 14px; margin-top: 10px; }
+    .muted { color: #666; font-size: 0.9em; margin-top: 6px; }
+    .ok { color: green; }
+    .err { color: red; }
   </style>
 </head>
 <body>
-  <h1>📤 Subir archivo Excel (.xls o .xlsx)</h1>
-  <form id="uploadForm">
-    <input type="file" id="file" name="file" accept=".xls,.xlsx" required />
+  <h1>📤 Subir archivo de novedades (Excel)</h1>
+  <p class="muted">Columnas esperadas: <strong>COD.INT</strong>, <strong>PRECIO</strong>, <strong>FECHA</strong> (DD/MM/AA)</p>
+
+  <form id="form">
+    <input id="file" name="file" type="file" accept=".xls,.xlsx,.csv" required />
     <button type="submit">Subir y previsualizar</button>
   </form>
 
+  <div id="messages"></div>
   <div id="preview"></div>
 
   <script>
-    const form = document.getElementById("uploadForm");
-    const previewDiv = document.getElementById("preview");
-    let previewData = [];
+    const form = document.getElementById('form');
+    const previewDiv = document.getElementById('preview');
+    const messages = document.getElementById('messages');
+    let lastPreview = [];
 
-    form.addEventListener("submit", async (e) => {
+    function showMessage(msg, type) {
+      messages.innerHTML = `<p class="${type === 'err' ? 'err' : 'ok'}">${msg}</p>`;
+    }
+
+    form.addEventListener('submit', async function(e) {
       e.preventDefault();
-      const formData = new FormData();
-      formData.append("file", document.getElementById("file").files[0]);
+      messages.innerHTML = '';
+      previewDiv.innerHTML = 'Procesando...';
 
-      const res = await fetch("/upload", { method: "POST", body: formData });
-      const json = await res.json();
-      previewData = json.preview || [];
+      const f = document.getElementById('file').files[0];
+      if (!f) { showMessage('Seleccioná un archivo.','err'); return; }
 
-      if (previewData.length === 0) {
-        previewDiv.innerHTML = "<p>No se encontraron datos válidos.</p>";
-        return;
-      }
+      const fd = new FormData();
+      fd.append('file', f);
 
-      // Mostrar tabla
-      const headers = Object.keys(previewData[0]);
-      const table = `
-        <table>
-          <thead><tr>${headers.map(h => `<th>${h}</th>`).join("")}</tr></thead>
-          <tbody>
-            ${previewData.map(row => `
-              <tr>${headers.map(h => `<td>${row[h] || ""}</td>`).join("")}</tr>
-            `).join("")}
-          </tbody>
-        </table>
-        <button id="confirmBtn">✅ Confirmar actualización</button>
-      `;
-      previewDiv.innerHTML = table;
+      try {
+        const r = await fetch('/upload', { method: 'POST', body: fd });
+        if (!r.ok) {
+          const err = await r.json().catch(()=>({error:'error'}));
+          previewDiv.innerHTML = '';
+          showMessage('Error al procesar: ' + (err.error || r.statusText), 'err');
+          return;
+        }
+        const json = await r.json();
+        const preview = json.preview || [];
+        lastPreview = preview;
 
-      document.getElementById("confirmBtn").addEventListener("click", async () => {
-        const res = await fetch("/confirm", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ data: previewData }),
+        if (preview.length === 0) {
+          previewDiv.innerHTML = '<p>No se encontraron filas válidas.</p>';
+          return;
+        }
+
+        // Construir tabla
+        const headers = ['Producto', 'SKU', 'Precio actual', 'Precio nuevo', 'Fecha nueva'];
+        let html = '<table><thead><tr>' + headers.map(h=>`<th>${h}</th>`).join('') + '</tr></thead><tbody>';
+        html += preview.map(row => {
+          return `<tr>
+            <td>${row.product_name || ''}</td>
+            <td>${row.sku || ''}</td>
+            <td>${row.price_current || ''}</td>
+            <td>${row.price_new || ''}</td>
+            <td>${row.date_new || ''}</td>
+          </tr>`;
+        }).join('');
+        html += '</tbody></table>';
+        html += `<button id="confirmBtn">✅ Confirmar actualización de ${preview.length} productos</button>`;
+        previewDiv.innerHTML = html;
+
+        document.getElementById('confirmBtn').addEventListener('click', async () => {
+          if (!confirm('¿Actualizar TODOS los productos mostrados en Jumpseller?')) return;
+          showMessage('Actualizando...', 'ok');
+
+          // Enviamos la info al backend tal como viene (mejor enviar solo campos necesarios)
+          const body = lastPreview.map(p => ({
+            sku: p.sku,
+            price_new: p.price_new,
+            date_new: p.date_new,
+            jumpseller_id: p.jumpseller_id
+          }));
+
+          const r2 = await fetch('/confirm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data: body })
+          });
+
+          const resJson = await r2.json();
+          if (!r2.ok) {
+            showMessage('Error en actualización: ' + (resJson.error || r2.statusText), 'err');
+            return;
+          }
+
+          // Mostrar resultados
+          let out = '<h3>Resultado de actualización</h3><table><thead><tr><th>SKU</th><th>OK</th><th>Mensaje / status</th></tr></thead><tbody>';
+          (resJson.results || []).forEach(r => {
+            out += `<tr><td>${r.sku || ''}</td><td>${r.ok ? '✅' : '❌'}</td><td>${r.ok ? (r.status || 'ok') : (JSON.stringify(r.message) || r.message || '')}</td></tr>`;
+          });
+          out += '</tbody></table>';
+          previewDiv.innerHTML = out;
+          showMessage('Proceso finalizado', 'ok');
         });
-        const msg = await res.json();
-        alert(msg.message);
-      });
+
+      } catch (err) {
+        previewDiv.innerHTML = '';
+        showMessage('Error: ' + (err.message || err), 'err');
+      }
     });
   </script>
 </body>
