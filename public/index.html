@@ -1,125 +1,155 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Subir novedades - Previsualizar y confirmar</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Actualización de Productos Jumpseller</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 18px; max-width: 980px; margin: auto; }
-    h1 { margin-bottom: 6px; }
-    form { margin-bottom: 12px; }
-    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-    th { background: #f3f3f3; }
-    button { padding: 8px 14px; margin-top: 10px; }
-    .muted { color: #666; font-size: 0.9em; margin-top: 6px; }
-    .ok { color: green; }
-    .err { color: red; }
+    body {
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: #f5f6fa;
+      padding: 40px;
+      color: #333;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 30px;
+      color: #2c3e50;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: #fff;
+      padding: 25px;
+      border-radius: 10px;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.1);
+    }
+    input[type="file"] {
+      display: block;
+      margin: 20px auto;
+      font-size: 15px;
+    }
+    button {
+      background-color: #2ecc71;
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      font-size: 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    button:hover {
+      background-color: #27ae60;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 25px;
+    }
+    table, th, td {
+      border: 1px solid #ddd;
+    }
+    th {
+      background-color: #2c3e50;
+      color: white;
+      text-align: center;
+      padding: 8px;
+    }
+    td {
+      text-align: center;
+      padding: 8px;
+    }
+    .loading {
+      text-align: center;
+      margin-top: 20px;
+      font-weight: bold;
+      color: #2980b9;
+    }
+    .success {
+      background: #eafaf1;
+      color: #27ae60;
+    }
+    .error {
+      background: #fdecea;
+      color: #c0392b;
+    }
   </style>
 </head>
 <body>
-  <h1>📤 Subir archivo de novedades (Excel)</h1>
-  <p class="muted">Columnas esperadas: <strong>COD.INT</strong>, <strong>PRECIO</strong>, <strong>FECHA</strong> (DD/MM/AA)</p>
+  <h1>Actualización de Productos Jumpseller</h1>
+  <div class="container">
+    <form id="uploadForm">
+      <input type="file" name="file" id="fileInput" accept=".xls,.xlsx,.csv" required />
+      <button type="submit">📤 Subir archivo</button>
+    </form>
 
-  <form id="form">
-    <input id="file" name="file" type="file" accept=".xls,.xlsx,.csv" required />
-    <button type="submit">Subir y previsualizar</button>
-  </form>
-
-  <div id="messages"></div>
-  <div id="preview"></div>
+    <div id="loading" class="loading" style="display: none;">Procesando archivo, por favor espere...</div>
+    <table id="resultTable" style="display:none;">
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Nombre</th>
+          <th>Precio actual</th>
+          <th>Precio nuevo</th>
+          <th>Fecha</th>
+          <th>Resultado</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
 
   <script>
-    const form = document.getElementById('form');
-    const previewDiv = document.getElementById('preview');
-    const messages = document.getElementById('messages');
-    let lastPreview = [];
+    const form = document.getElementById('uploadForm');
+    const loading = document.getElementById('loading');
+    const table = document.getElementById('resultTable');
+    const tbody = table.querySelector('tbody');
 
-    function showMessage(msg, type) {
-      messages.innerHTML = `<p class="${type === 'err' ? 'err' : 'ok'}">${msg}</p>`;
-    }
-
-    form.addEventListener('submit', async function(e) {
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      messages.innerHTML = '';
-      previewDiv.innerHTML = 'Procesando...';
+      const file = document.getElementById('fileInput').files[0];
+      if (!file) return alert('Selecciona un archivo para continuar.');
 
-      const f = document.getElementById('file').files[0];
-      if (!f) { showMessage('Seleccioná un archivo.','err'); return; }
+      loading.style.display = 'block';
+      table.style.display = 'none';
+      tbody.innerHTML = '';
 
-      const fd = new FormData();
-      fd.append('file', f);
+      const formData = new FormData();
+      formData.append('file', file);
 
       try {
-        const r = await fetch('/upload', { method: 'POST', body: fd });
-        if (!r.ok) {
-          const err = await r.json().catch(()=>({error:'error'}));
-          previewDiv.innerHTML = '';
-          showMessage('Error al procesar: ' + (err.error || r.statusText), 'err');
-          return;
-        }
-        const json = await r.json();
-        const preview = json.preview || [];
-        lastPreview = preview;
-
-        if (preview.length === 0) {
-          previewDiv.innerHTML = '<p>No se encontraron filas válidas.</p>';
-          return;
-        }
-
-        // Construir tabla
-        const headers = ['Producto', 'SKU', 'Precio actual', 'Precio nuevo', 'Fecha nueva'];
-        let html = '<table><thead><tr>' + headers.map(h=>`<th>${h}</th>`).join('') + '</tr></thead><tbody>';
-        html += preview.map(row => {
-          return `<tr>
-            <td>${row.product_name || ''}</td>
-            <td>${row.sku || ''}</td>
-            <td>${row.price_current || ''}</td>
-            <td>${row.price_new || ''}</td>
-            <td>${row.date_new || ''}</td>
-          </tr>`;
-        }).join('');
-        html += '</tbody></table>';
-        html += `<button id="confirmBtn">✅ Confirmar actualización de ${preview.length} productos</button>`;
-        previewDiv.innerHTML = html;
-
-        document.getElementById('confirmBtn').addEventListener('click', async () => {
-          if (!confirm('¿Actualizar TODOS los productos mostrados en Jumpseller?')) return;
-          showMessage('Actualizando...', 'ok');
-
-          // Enviamos la info al backend tal como viene (mejor enviar solo campos necesarios)
-          const body = lastPreview.map(p => ({
-            sku: p.sku,
-            price_new: p.price_new,
-            date_new: p.date_new,
-            jumpseller_id: p.jumpseller_id
-          }));
-
-          const r2 = await fetch('/confirm', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ data: body })
-          });
-
-          const resJson = await r2.json();
-          if (!r2.ok) {
-            showMessage('Error en actualización: ' + (resJson.error || r2.statusText), 'err');
-            return;
-          }
-
-          // Mostrar resultados
-          let out = '<h3>Resultado de actualización</h3><table><thead><tr><th>SKU</th><th>OK</th><th>Mensaje / status</th></tr></thead><tbody>';
-          (resJson.results || []).forEach(r => {
-            out += `<tr><td>${r.sku || ''}</td><td>${r.ok ? '✅' : '❌'}</td><td>${r.ok ? (r.status || 'ok') : (JSON.stringify(r.message) || r.message || '')}</td></tr>`;
-          });
-          out += '</tbody></table>';
-          previewDiv.innerHTML = out;
-          showMessage('Proceso finalizado', 'ok');
+        const response = await fetch('/upload', {
+          method: 'POST',
+          body: formData
         });
 
-      } catch (err) {
-        previewDiv.innerHTML = '';
-        showMessage('Error: ' + (err.message || err), 'err');
+        const data = await response.json();
+        loading.style.display = 'none';
+
+        if (!Array.isArray(data) || data.length === 0) {
+          alert('No se encontraron productos válidos en el archivo.');
+          return;
+        }
+
+        table.style.display = 'table';
+        data.forEach(row => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${row.SKU || ''}</td>
+            <td>${row.Nombre || ''}</td>
+            <td>${row['Precio actual'] || ''}</td>
+            <td>${row['Precio nuevo'] || ''}</td>
+            <td>${row.Fecha || ''}</td>
+            <td class="${row.Resultado.includes('✅') ? 'success' : 'error'}">${row.Resultado}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+      } catch (error) {
+        loading.style.display = 'none';
+        console.error('Error:', error);
+        alert('Ocurrió un error al procesar el archivo.');
       }
     });
   </script>
