@@ -15,15 +15,21 @@ app.use(cors());
 app.use(express.json());
 
 // -----------------------------
+// Servir archivos estáticos (HTML, CSS, JS) desde /public
+// -----------------------------
+app.use(express.static(path.join(__dirname, "public")));
+
+// -----------------------------
 // Configuración de Multer (para subir archivos CSV)
 // -----------------------------
 const upload = multer({ dest: "uploads/" });
 
 // -----------------------------
-// Ruta principal de prueba
+// Ruta principal: muestra el formulario HTML
 // -----------------------------
 app.get("/", (req, res) => {
-  res.send("🚀 Servidor funcionando correctamente en Render");
+  // En lugar de enviar texto, ahora enviamos el index.html
+  res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
 // -----------------------------
@@ -40,15 +46,10 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       .on("end", async () => {
         fs.unlinkSync(filePath); // elimina el archivo temporal
 
-        // Ejemplo: envío de datos a una API externa si lo necesitás
-        /*
-        await axios.post("https://tu-api.com/procesar", results);
-        */
-
         res.json({
           message: "Archivo CSV procesado correctamente",
           rows: results.length,
-          sample: results.slice(0, 5) // muestra primeras filas
+          sample: results.slice(0, 5),
         });
       });
   } catch (error) {
@@ -58,7 +59,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 });
 
 // -----------------------------
-// Puerto dinámico para Render
+// Puerto dinámico (Render usa process.env.PORT)
 // -----------------------------
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
