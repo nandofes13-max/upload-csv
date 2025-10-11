@@ -1,68 +1,42 @@
-// upload-server.js
-const express = require("express");
-const multer = require("multer");
-const fs = require("fs");
-const csv = require("csv-parser");
-const { Parser } = require("json2csv");
-const axios = require("axios");
-const cors = require("cors");
+const express = require('express');
+const cors = require('cors');
+const multer = require('multer');
+const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
+const port = process.env.PORT || 10000;
+
 app.use(cors());
-app.use(express.static("public"));
+app.use(express.json());
 
-const upload = multer({ dest: "uploads/" });
+// Configurar Multer para subir archivos
+const upload = multer({ dest: 'uploads/' });
 
-const JUMPS_API = "https://api.jumpseller.com/v1/products/search.json";
-const JUMPS_TOKEN = process.env.JUMPS_TOKEN; // configurado en Render
-
-app.post("/upload", upload.single("file"), async (req, res) => {
-  const filePath = req.file.path;
-  const updatedRows = [];
-
+app.post('/upload', upload.single('file'), async (req, res) => {
   try {
-    const products = await new Promise((resolve, reject) => {
-      const rows = [];
-      fs.createReadStream(filePath)
-        .pipe(csv())
-        .on("data", data => rows.push(data))
-        .on("end", () => resolve(rows))
-        .on("error", reject);
-    });
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: 'No se subió ningún archivo' });
 
-    for (const p of products) {
-      const sku = p.sku || p.SKU || "";
-      if (!sku) continue;
+    // Ejemplo de lectura del CSV
+    const filePath = path.join(__dirname, file.path);
+    const data = fs.readFileSync(filePath, 'utf-8');
 
-      try {
-        const response = await axios.get(JUMPS_API, {
-          params: { q: sku },
-          auth: { username: JUMPS_TOKEN, password: "" }
-        });
-        const result = response.data?.products?.[0];
-        if (result) p.price = result.price || p.price;
-      } catch (err) {
-        console.warn(`No se pudo actualizar SKU ${sku}:`, err.message);
-      }
+    // Ejemplo de envío del contenido a una API externa
+    // const response = await axios.post('https://api.tuservidor.com/procesar', { data });
 
-      updatedRows.push(p);
-    }
+    console.log('Archivo recibido:', file.originalname);
+    res.json({ status: 'ok', message: 'Archivo procesado correctamente' });
 
-    const parser = new Parser({ fields: Object.keys(updatedRows[0]) });
-    const csvUpdated = parser.parse(updatedRows);
-
-    res.header("Content-Type", "text/csv");
-    res.attachment("productos_actualizados.csv");
-    res.send(csvUpdated);
-  } catch (err) {
-    console.error("Error al procesar CSV:", err);
-    res.status(500).send("Error al procesar el archivo");
-  } finally {
+    // Eliminar archivo temporal
     fs.unlinkSync(filePath);
+  } catch (error) {
+    console.error('Error al procesar el archivo:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
 
-const PORT = process.env.PORT || 10001;
-app.listen(PORT, () =>
-  console.log(`Servidor de actualización corriendo en puerto ${PORT}`)
-);
+app.listen(port, () => {
+  console.log(`Servidor escuchando en el puerto ${port}`);
+});
