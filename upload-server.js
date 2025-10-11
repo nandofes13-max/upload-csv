@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 
 const app = express();
-const port = process.env.PORT || 10000;
+const port = process.env.PORT || 3000; // 🔧 estándar para Render y local
 
 app.use(cors());
 app.use(express.json());
@@ -38,5 +38,6 @@ app.post('/upload', upload.single('file'), async (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log(`Servidor escuchando en el puerto ${port}`);
+  console.log(`🚀 Servidor escuchando en el puerto ${port}`);
 });
+
