@@ -3,155 +3,82 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Actualización de Productos Jumpseller</title>
+  <title>Actualizar productos Jumpseller</title>
   <style>
     body {
-      font-family: "Segoe UI", Arial, sans-serif;
-      background: #f5f6fa;
-      padding: 40px;
+      font-family: Arial, sans-serif;
+      background: #f7f7f7;
       color: #333;
+      padding: 40px;
     }
     h1 {
       text-align: center;
-      margin-bottom: 30px;
-      color: #2c3e50;
     }
-    .container {
-      max-width: 800px;
-      margin: 0 auto;
-      background: #fff;
-      padding: 25px;
-      border-radius: 10px;
-      box-shadow: 0 3px 8px rgba(0,0,0,0.1);
+    form {
+      text-align: center;
+      margin-bottom: 30px;
     }
     input[type="file"] {
-      display: block;
-      margin: 20px auto;
-      font-size: 15px;
+      padding: 10px;
     }
     button {
-      background-color: #2ecc71;
+      background-color: #4CAF50;
       color: white;
       border: none;
-      padding: 12px 20px;
-      font-size: 16px;
-      border-radius: 6px;
+      padding: 10px 20px;
       cursor: pointer;
-      margin-top: 10px;
+      border-radius: 6px;
     }
     button:hover {
-      background-color: #27ae60;
+      background-color: #45a049;
     }
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 25px;
+      margin-top: 30px;
+      background: white;
     }
-    table, th, td {
+    th, td {
       border: 1px solid #ddd;
+      padding: 8px;
+      text-align: center;
     }
     th {
-      background-color: #2c3e50;
+      background-color: #4CAF50;
       color: white;
-      text-align: center;
-      padding: 8px;
     }
-    td {
-      text-align: center;
-      padding: 8px;
-    }
-    .loading {
-      text-align: center;
+    #resultados {
       margin-top: 20px;
       font-weight: bold;
-      color: #2980b9;
-    }
-    .success {
-      background: #eafaf1;
-      color: #27ae60;
-    }
-    .error {
-      background: #fdecea;
-      color: #c0392b;
+      text-align: center;
     }
   </style>
 </head>
 <body>
-  <h1>Actualización de Productos Jumpseller</h1>
-  <div class="container">
-    <form id="uploadForm">
-      <input type="file" name="file" id="fileInput" accept=".xls,.xlsx,.csv" required />
-      <button type="submit">📤 Subir archivo</button>
-    </form>
+  <h1>📦 Actualizar Productos Jumpseller</h1>
 
-    <div id="loading" class="loading" style="display: none;">Procesando archivo, por favor espere...</div>
-    <table id="resultTable" style="display:none;">
-      <thead>
-        <tr>
-          <th>SKU</th>
-          <th>Nombre</th>
-          <th>Precio actual</th>
-          <th>Precio nuevo</th>
-          <th>Fecha</th>
-          <th>Resultado</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </div>
+  <form id="uploadForm">
+    <input type="file" id="archivo" name="file" accept=".xls,.xlsx" required />
+    <button type="submit">Subir archivo</button>
+  </form>
+
+  <div id="preview"></div>
+  <div id="resultados"></div>
 
   <script>
-    const form = document.getElementById('uploadForm');
-    const loading = document.getElementById('loading');
-    const table = document.getElementById('resultTable');
-    const tbody = table.querySelector('tbody');
+    const uploadForm = document.getElementById("uploadForm");
+    const previewDiv = document.getElementById("preview");
+    const resultadosDiv = document.getElementById("resultados");
 
-    form.addEventListener('submit', async (e) => {
+    let productosCargados = [];
+
+    uploadForm.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const file = document.getElementById('fileInput').files[0];
-      if (!file) return alert('Selecciona un archivo para continuar.');
-
-      loading.style.display = 'block';
-      table.style.display = 'none';
-      tbody.innerHTML = '';
+      resultadosDiv.innerHTML = "";
+      previewDiv.innerHTML = "Procesando archivo...";
 
       const formData = new FormData();
-      formData.append('file', file);
+      const file = document.getElementById("archivo").files[0];
+      formData.append("file", file);
 
-      try {
-        const response = await fetch('/upload', {
-          method: 'POST',
-          body: formData
-        });
-
-        const data = await response.json();
-        loading.style.display = 'none';
-
-        if (!Array.isArray(data) || data.length === 0) {
-          alert('No se encontraron productos válidos en el archivo.');
-          return;
-        }
-
-        table.style.display = 'table';
-        data.forEach(row => {
-          const tr = document.createElement('tr');
-          tr.innerHTML = `
-            <td>${row.SKU || ''}</td>
-            <td>${row.Nombre || ''}</td>
-            <td>${row['Precio actual'] || ''}</td>
-            <td>${row['Precio nuevo'] || ''}</td>
-            <td>${row.Fecha || ''}</td>
-            <td class="${row.Resultado.includes('✅') ? 'success' : 'error'}">${row.Resultado}</td>
-          `;
-          tbody.appendChild(tr);
-        });
-
-      } catch (error) {
-        loading.style.display = 'none';
-        console.error('Error:', error);
-        alert('Ocurrió un error al procesar el archivo.');
-      }
-    });
-  </script>
-</body>
-</html>
+      tr
