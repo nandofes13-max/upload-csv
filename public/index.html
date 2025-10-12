@@ -52,6 +52,36 @@
       font-weight: bold;
       text-align: center;
     }
+
+    /* Overlay de carga */
+    #loadingOverlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(255, 255, 255, 0.8);
+      z-index: 9999;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      font-size: 18px;
+      color: #333;
+    }
+
+    .spinner {
+      border: 6px solid #f3f3f3;
+      border-top: 6px solid #4CAF50;
+      border-radius: 50%;
+      width: 60px;
+      height: 60px;
+      animation: spin 1s linear infinite;
+      margin-bottom: 15px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
@@ -65,20 +95,147 @@
   <div id="preview"></div>
   <div id="resultados"></div>
 
+  <!-- Overlay de carga -->
+  <div id="loadingOverlay">
+    <div class="spinner"></div>
+    <p id="loadingText">Procesando información...</p>
+  </div>
+
   <script>
     const uploadForm = document.getElementById("uploadForm");
     const previewDiv = document.getElementById("preview");
     const resultadosDiv = document.getElementById("resultados");
+    const loadingOverlay = document.getElementById("loadingOverlay");
+    const loadingText = document.getElementById("loadingText");
 
     let productosCargados = [];
+
+    function mostrarCarga(texto = "Procesando información...") {
+      loadingText.textContent = texto;
+      loadingOverlay.style.display = "flex";
+    }
+
+    function ocultarCarga() {
+      loadingOverlay.style.display = "none";
+    }
 
     uploadForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       resultadosDiv.innerHTML = "";
-      previewDiv.innerHTML = "Procesando archivo...";
+      previewDiv.innerHTML = "";
+      mostrarCarga("Leyendo archivo Excel...");
 
       const formData = new FormData();
       const file = document.getElementById("archivo").files[0];
       formData.append("file", file);
 
-      tr
+      try {
+        const res = await fetch("/upload", {
+          method: "POST",
+          body: formData,
+        });
+
+        const data = await res.json();
+        ocultarCarga();
+
+        if (!res.ok) {
+          previewDiv.innerHTML = `<p style="color:red;">${data.message || "Error al procesar el archivo"}</p>`;
+          return;
+        }
+
+        productosCargados = data.productos;
+        mostrarTablaPrevia(productosCargados);
+
+      } catch (err) {
+        ocultarCarga();
+        console.error(err);
+        previewDiv.innerHTML = `<p style="color:red;">Error en la conexión con el servidor.</p>`;
+      }
+    });
+
+    function mostrarTablaPrevia(productos) {
+      if (!productos.length) {
+        previewDiv.innerHTML = `<p style="color:red;">No se encontraron productos válidos.</p>`;
+        return;
+      }
+
+      let html = `
+        <table>
+          <tr>
+            <th>SKU (Producto)</th>
+            <th>Precio actual (desde Jumpseller)</th>
+            <th>Nuevo precio (desde Excel)</th>
+            <th>Fecha</th>
+          </tr>
+      `;
+
+      productos.forEach(p => {
+        html += `
+          <tr>
+            <td>${p.sku}</td>
+            <td class="precio-actual">⏳</td>
+            <td>${p.nuevoPrecio ? "$" + p.nuevoPrecio.toFixed(2) : "-"}</td>
+            <td>${p.fechaOriginal || "-"}</td>
+          </tr>
+        `;
+      });
+
+      html += `</table><br><button id="confirmarBtn">Confirmar actualización</button>`;
+      previewDiv.innerHTML = html;
+
+      cargarPreciosActuales(productos);
+      document.getElementById("confirmarBtn").addEventListener("click", confirmarActualizacion);
+    }
+
+    async function cargarPreciosActuales(productos) {
+      mostrarCarga("Cargando precios actuales desde Jumpseller...");
+      try {
+        const res = await fetch("/precios");
+        const data = await res.json();
+        ocultarCarga();
+
+        const preciosActuales = {};
+        data.forEach(p => preciosActuales[p.product.sku] = p.product.price);
+
+        const filas = document.querySelectorAll("table tr");
+        productos.forEach((prod, i) => {
+          const precioCelda = filas[i + 1].querySelector(".precio-actual");
+          precioCelda.textContent = preciosActuales[prod.sku]
+            ? "$" + preciosActuales[prod.sku].toFixed(2)
+            : "No encontrado";
+        });
+      } catch (err) {
+        ocultarCarga();
+        console.error("Error cargando precios actuales:", err);
+      }
+    }
+
+    async function confirmarActualizacion() {
+      mostrarCarga("Actualizando productos en Jumpseller...");
+      resultadosDiv.innerHTML = "";
+
+      try {
+        const res = await fetch("/actualizar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ productos: productosCargados }),
+        });
+
+        const data = await res.json();
+        ocultarCarga();
+
+        if (!res.ok) {
+          resultadosDiv.innerHTML = `<p style="color:red;">${data.message || "Error en la actualización."}</p>`;
+          return;
+        }
+
+        resultadosDiv.innerHTML = `<p style="color:green;">✅ ${data.actualizados.length} productos actualizados correctamente.</p>`;
+      } catch (err) {
+        ocultarCarga();
+        console.error(err);
+        resultadosDiv.innerHTML = `<p style="color:red;">Error de conexión con el servidor.</p>`;
+      }
+    }
+  </script>
+</body>
+</html>
