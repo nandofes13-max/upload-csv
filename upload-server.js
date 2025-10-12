@@ -1,141 +1,135 @@
 import express from "express";
 import multer from "multer";
 import cors from "cors";
-import fs from "fs";
 import XLSX from "xlsx";
 import axios from "axios";
 import path from "path";
+import { fileURLToPath } from "url";
+import fs from "fs";
 
 const app = express();
 app.use(cors());
-app.use(express.json());
 app.use(express.static("public"));
+app.use(express.json());
 
-const upload = multer({ dest: "uploads/" });
+// Para obtener la ruta actual (por módulos ES)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// Función para formatear fecha DD/MM/AA
-function formatearFecha(fechaExcel) {
-  if (!fechaExcel) return "";
-  const partes = fechaExcel.toString().split(/[\/\-\.]/);
-  if (partes.length === 3) {
-    const [dia, mes, anio] = partes;
-    const anio2 = anio.length === 4 ? anio.slice(-2) : anio;
-    return `${dia.padStart(2, "0")}/${mes.padStart(2, "0")}/${anio2}`;
-  }
-  return fechaExcel;
-}
+// Configuración de Multer para subir el archivo Excel
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, "uploads/");
+  },
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + path.extname(file.originalname));
+  },
+});
+const upload = multer({ storage });
 
-// Ruta para procesar el archivo Excel
+// Variables de entorno (Render)
+const JUMPS_LOGIN = process.env.JUMPS_LOGIN;
+const JUMPS_TOKEN = process.env.JUMPS_TOKEN;
+
+// Ruta para servir el HTML
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
+// Subida y previsualización del archivo Excel
 app.post("/upload", upload.single("file"), async (req, res) => {
   try {
     const filePath = req.file.path;
+
     const workbook = XLSX.readFile(filePath);
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const range = XLSX.utils.decode_range(sheet["!ref"]);
-    let productos = [];
+    const sheetName = workbook.SheetNames[0];
+    const sheet = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
 
-    // Leer por posiciones de columna fijas: A=COD.INT, F=PRECIO, M=FECHA
-    for (let row = 2; row <= range.e.r + 1; row++) {
-      const codInt = sheet[`A${row}`]?.v?.toString().trim();
-      const precio = sheet[`F${row}`]?.v?.toString().trim();
-      const fecha = sheet[`M${row}`]?.v?.toString().trim();
-      if (codInt && precio) {
-        productos.push({
-          codInt,
-          precio,
-          fecha: formatearFecha(fecha)
-        });
-      }
-    }
+    // Leer columnas correctas
+    const productos = sheet
+      .filter(row => row["COD.INT"] && row["PRECIO"])
+      .map(row => {
+        const precioTexto = String(row["PRECIO"]).replace(",", "."); // convierte 32,54 → 32.54
+        const precioNumero = parseFloat(precioTexto);
 
-    fs.unlinkSync(filePath); // eliminar archivo temporal
+        // Fecha en formato DD/MM/AA
+        let fechaFormateada = "";
+        if (row["FECHA"]) {
+          const partes = row["FECHA"].split("/");
+          if (partes.length === 3) {
+            fechaFormateada = `${partes[0].padStart(2, "0")}/${partes[1].padStart(2, "0")}/${partes[2]}`;
+          }
+        }
+
+        return {
+          sku: String(row["COD.INT"]).trim(),
+          nuevoPrecio: precioNumero,
+          fechaOriginal: fechaFormateada,
+        };
+      });
+
+    console.log("Productos leídos:", productos);
+
+    fs.unlinkSync(filePath); // borrar archivo temporal
 
     if (!productos.length) {
-      console.log("⚠️ No se encontraron filas válidas en el Excel.");
-      return res.status(400).json({ error: "No se encontraron productos válidos en el archivo." });
+      return res.status(400).json({ message: "No se encontraron productos válidos en el archivo." });
     }
 
-    // Consultar productos actuales en Jumpseller
-    const login = process.env.JUMPS_LOGIN;
-    const token = process.env.JUMPS_TOKEN;
-
-    const productosConInfo = [];
-
-    for (const item of productos) {
-      try {
-        const resp = await axios.get(`https://api.jumpseller.com/v1/products/search.json?sku=${item.codInt}`, {
-          auth: { username: login, password: token }
-        });
-
-        const producto = resp.data.products?.[0]?.product || resp.data.product;
-        const precioActual = producto?.price || producto?.variants?.[0]?.price || "";
-
-        productosConInfo.push({
-          sku: item.codInt,
-          nombre: producto?.name || "No encontrado",
-          precioActual,
-          nuevoPrecio: item.precio,
-          fechaNueva: item.fecha
-        });
-      } catch (err) {
-        console.error(`❌ Error buscando SKU ${item.codInt}:`, err.response?.data || err.message);
-      }
-    }
-
-    res.json({ productos: productosConInfo });
-  } catch (err) {
-    console.error("❌ Error procesando archivo:", err);
-    res.status(500).json({ error: "Error procesando archivo." });
+    res.json({ productos });
+  } catch (error) {
+    console.error("Error al procesar archivo:", error);
+    res.status(500).json({ message: "Error al procesar el archivo Excel." });
   }
 });
 
-// Ruta para confirmar actualización
+// Confirmar y actualizar productos en Jumpseller
 app.post("/actualizar", async (req, res) => {
   try {
     const { productos } = req.body;
-    const login = process.env.JUMPS_LOGIN;
-    const token = process.env.JUMPS_TOKEN;
+    const actualizados = [];
 
-    for (const p of productos) {
-      try {
-        const resp = await axios.get(`https://api.jumpseller.com/v1/products/search.json?sku=${p.sku}`, {
-          auth: { username: login, password: token }
-        });
-        const producto = resp.data.products?.[0]?.product;
-        if (!producto) continue;
+    for (const producto of productos) {
+      const sku = producto.sku;
+      const nuevoPrecio = producto.nuevoPrecio;
+      const fecha = producto.fechaOriginal;
 
-        const productId = producto.id;
+      // Buscar producto por SKU
+      const searchUrl = `https://api.jumpseller.com/v1/products.json?login=${JUMPS_LOGIN}&authtoken=${JUMPS_TOKEN}`;
+      const { data: productosData } = await axios.get(searchUrl);
+      const encontrado = productosData.find(p => p.product.sku === sku);
 
-        await axios.put(
-          `https://api.jumpseller.com/v1/products/${productId}.json`,
-          {
-            product: {
-              price: p.nuevoPrecio,
-              custom_fields: [
-                { name: "Fecha", value: p.fechaNueva }
-              ]
-            }
-          },
-          { auth: { username: login, password: token } }
-        );
-
-        console.log(`✅ Actualizado ${p.sku} con precio ${p.nuevoPrecio} y fecha ${p.fechaNueva}`);
-      } catch (err) {
-        console.error(`❌ Error actualizando ${p.sku}:`, err.response?.data || err.message);
+      if (!encontrado) {
+        console.log(`❌ Producto con SKU ${sku} no encontrado`);
+        continue;
       }
+
+      const productId = encontrado.product.id;
+
+      // Actualizar producto
+      const updateUrl = `https://api.jumpseller.com/v1/products/${productId}.json?login=${JUMPS_LOGIN}&authtoken=${JUMPS_TOKEN}`;
+      const payload = {
+        product: {
+          price: nuevoPrecio,
+          custom_fields: [
+            { label: "Fecha", value: fecha },
+          ],
+        },
+      };
+
+      await axios.put(updateUrl, payload);
+      console.log(`✅ Producto ${sku} actualizado → $${nuevoPrecio} / Fecha ${fecha}`);
+      actualizados.push(sku);
     }
 
-    res.json({ mensaje: "Actualización completada correctamente." });
-  } catch (err) {
-    console.error("❌ Error general:", err);
-    res.status(500).json({ error: "Error durante la actualización." });
+    res.json({ message: "Actualización completa", actualizados });
+  } catch (error) {
+    console.error("Error al actualizar productos:", error);
+    res.status(500).json({ message: "Error al actualizar productos en Jumpseller." });
   }
 });
 
-// Ruta raíz
-app.get("/", (req, res) => {
-  res.sendFile(path.join(process.cwd(), "public", "index.html"));
-});
-
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`🚀 Servidor escuchando en el puerto ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`🚀 Servidor escuchando en el puerto ${PORT}`);
+});
