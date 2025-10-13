@@ -1,68 +1,37 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <title>Subir archivo Excel</title>
+  <meta charset="UTF-8">
+  <title>Actualizar Precios desde CSV</title>
   <style>
-    body { font-family: sans-serif; padding: 20px; }
-    table { border-collapse: collapse; width: 100%; margin-top: 15px; }
-    th, td { border: 1px solid #aaa; padding: 8px; text-align: left; }
-    th { background: #eee; }
-    button { margin-top: 10px; padding: 10px 15px; }
+    body { font-family: Arial, sans-serif; margin: 40px; }
+    h1 { color: #2b5c9e; }
+    form { margin-top: 20px; }
+    input, button { padding: 10px; margin: 5px 0; }
   </style>
 </head>
 <body>
-  <h1>📤 Subir archivo Excel (.xls o .xlsx)</h1>
-  <form id="uploadForm">
-    <input type="file" id="file" name="file" accept=".xls,.xlsx" required />
-    <button type="submit">Subir y previsualizar</button>
+  <h1>Actualizar precios desde CSV</h1>
+  <form id="uploadForm" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".csv" required />
+    <button type="submit">Subir y procesar</button>
   </form>
 
-  <div id="preview"></div>
-
   <script>
-    const form = document.getElementById("uploadForm");
-    const previewDiv = document.getElementById("preview");
-    let previewData = [];
-
-    form.addEventListener("submit", async (e) => {
+    document.getElementById("uploadForm").addEventListener("submit", async e => {
       e.preventDefault();
-      const formData = new FormData();
-      formData.append("file", document.getElementById("file").files[0]);
-
+      const formData = new FormData(e.target);
       const res = await fetch("/upload", { method: "POST", body: formData });
-      const json = await res.json();
-      previewData = json.preview || [];
-
-      if (previewData.length === 0) {
-        previewDiv.innerHTML = "<p>No se encontraron datos válidos.</p>";
-        return;
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "productos_actualizados.csv";
+        a.click();
+      } else {
+        alert("Error al procesar el archivo");
       }
-
-      // Mostrar tabla
-      const headers = Object.keys(previewData[0]);
-      const table = `
-        <table>
-          <thead><tr>${headers.map(h => `<th>${h}</th>`).join("")}</tr></thead>
-          <tbody>
-            ${previewData.map(row => `
-              <tr>${headers.map(h => `<td>${row[h] || ""}</td>`).join("")}</tr>
-            `).join("")}
-          </tbody>
-        </table>
-        <button id="confirmBtn">✅ Confirmar actualización</button>
-      `;
-      previewDiv.innerHTML = table;
-
-      document.getElementById("confirmBtn").addEventListener("click", async () => {
-        const res = await fetch("/confirm", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ data: previewData }),
-        });
-        const msg = await res.json();
-        alert(msg.message);
-      });
     });
   </script>
 </body>
