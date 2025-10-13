@@ -16,22 +16,30 @@ const upload = multer({ dest: "uploads/" });
 
 // --- Helpers ---
 // Convierte Excel serial date o strings a "DD/MM/AA" (ej: "11/10/25")
+// Convierte Excel serial date o strings a "DD/MM/AA" (ej: "11/10/25")
 function toDDMMYY(raw) {
   if (raw === null || raw === undefined || raw === "") return "";
+
   // Si viene como número (serial Excel)
   if (typeof raw === "number") {
+    // Excel cuenta días desde 1899-12-30 → esto evita el corrimiento por huso horario
     const date = new Date(Math.round((raw - 25569) * 86400 * 1000));
+    // Forzar lectura en UTC para evitar que reste un día en zonas GMT-3
     const dd = String(date.getUTCDate()).padStart(2, "0");
     const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
     const yy = String(date.getUTCFullYear()).slice(-2);
     return `${dd}/${mm}/${yy}`;
   }
+
+  // Si ya viene como Date
   if (raw instanceof Date) {
     const dd = String(raw.getDate()).padStart(2, "0");
     const mm = String(raw.getMonth() + 1).padStart(2, "0");
     const yy = String(raw.getFullYear()).slice(-2);
     return `${dd}/${mm}/${yy}`;
   }
+
+  // Si viene como string dd/mm/yy o dd/mm/yyyy
   const s = String(raw).trim();
   const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
   if (m) {
@@ -40,8 +48,10 @@ function toDDMMYY(raw) {
     const yy = m[3].length === 4 ? m[3].slice(-2) : m[3];
     return `${dd}/${mm}/${yy}`;
   }
+
   return s;
 }
+
 
 // Build axios instance for Jumpseller with Basic Auth (login:token)
 function createJumpsellerClient() {
