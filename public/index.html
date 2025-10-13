@@ -20,52 +20,50 @@
 
   <div id="preview"></div>
 
-<script>
-  const form = document.getElementById("uploadForm");
-  const previewDiv = document.getElementById("preview");
-  let previewData = [];
+  <script>
+    const form = document.getElementById("uploadForm");
+    const previewDiv = document.getElementById("preview");
+    let previewData = [];
 
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    previewDiv.innerHTML = "<p><b>Procesando archivo, por favor espere...</b></p>";
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const formData = new FormData();
+      formData.append("file", document.getElementById("file").files[0]);
 
-    const formData = new FormData();
-    formData.append("file", document.getElementById("file").files[0]);
+      const res = await fetch("/upload", { method: "POST", body: formData });
+      const json = await res.json();
+      previewData = json.preview || [];
 
-    const res = await fetch("/upload", { method: "POST", body: formData });
-    const json = await res.json();
-    previewData = json.preview || [];
+      if (previewData.length === 0) {
+        previewDiv.innerHTML = "<p>No se encontraron datos válidos.</p>";
+        return;
+      }
 
-    if (previewData.length === 0) {
-      previewDiv.innerHTML = "<p>No se encontraron datos válidos.</p>";
-      return;
-    }
+      // Mostrar tabla
+      const headers = Object.keys(previewData[0]);
+      const table = `
+        <table>
+          <thead><tr>${headers.map(h => `<th>${h}</th>`).join("")}</tr></thead>
+          <tbody>
+            ${previewData.map(row => `
+              <tr>${headers.map(h => `<td>${row[h] || ""}</td>`).join("")}</tr>
+            `).join("")}
+          </tbody>
+        </table>
+        <button id="confirmBtn">✅ Confirmar actualización</button>
+      `;
+      previewDiv.innerHTML = table;
 
-    const headers = ["product_name", "sku", "price_current", "price_new", "date_new"];
-    const table = `
-      <table>
-        <thead><tr>${headers.map(h => `<th>${h}</th>`).join("")}</tr></thead>
-        <tbody>
-          ${previewData.map(row => `
-            <tr>${headers.map(h => `<td>${row[h] ?? ""}</td>`).join("")}</tr>
-          `).join("")}
-        </tbody>
-      </table>
-      <button id="confirmBtn">✅ Confirmar actualización</button>
-    `;
-    previewDiv.innerHTML = table;
-
-    document.getElementById("confirmBtn").addEventListener("click", async () => {
-      previewDiv.innerHTML = "<p><b>Actualizando productos en Jumpseller...</b></p>";
-      const res = await fetch("/confirm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data: previewData }),
+      document.getElementById("confirmBtn").addEventListener("click", async () => {
+        const res = await fetch("/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data: previewData }),
+        });
+        const msg = await res.json();
+        alert(msg.message);
       });
-      const msg = await res.json();
-      previewDiv.innerHTML = "<pre>" + JSON.stringify(msg, null, 2) + "</pre>";
     });
-  });
-</script>
+  </script>
 </body>
 </html>
