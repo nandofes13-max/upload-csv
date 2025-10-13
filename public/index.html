@@ -54,16 +54,26 @@
       `;
       previewDiv.innerHTML = table;
 
-      document.getElementById("confirmBtn").addEventListener("click", async () => {
-        const res = await fetch("/confirm", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ data: previewData }),
-        });
-        const msg = await res.json();
-        alert(msg.message);
-      });
-    });
+     document.getElementById("confirmBtn").addEventListener("click", async () => {
+  const res = await fetch("/confirm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data: previewData }),
+  });
+  const msg = await res.json();
+
+  console.log("Respuesta completa del servidor:", msg);
+
+  if (Array.isArray(msg.results)) {
+    let okCount = msg.results.filter(r => r.ok).length;
+    let failCount = msg.results.length - okCount;
+
+    alert(`✅ ${okCount} productos actualizados correctamente.\n❌ ${failCount} con error.`);
+  } else {
+    alert("Error: respuesta inesperada del servidor.");
+  }
+});
+
   </script>
 </body>
 </html>
