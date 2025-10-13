@@ -61,7 +61,7 @@
           body: JSON.stringify({ data: previewData }),
         });
         const msg = await res.json();
-        alert(msg.message);
+        alert(msg.message || "Actualización finalizada correctamente.");
       });
     });
   </script>
