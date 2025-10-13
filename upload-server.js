@@ -1,67 +1,64 @@
-// -----------------------------
 // upload-server.js
-// -----------------------------
-
-const express = require("express");
-const cors = require("cors");
-const multer = require("multer");
-const csv = require("csv-parser");
-const fs = require("fs");
-const axios = require("axios");
-const path = require("path");
+import express from "express";
+import multer from "multer";
+import path from "path";
+import cors from "cors";
+import fs from "fs";
+import xlsx from "xlsx";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.static(path.join(process.cwd(), "public")));
 
-// -----------------------------
-// Servir archivos estáticos (HTML, CSS, JS) desde /public
-// -----------------------------
-app.use(express.static(path.join(__dirname, "public")));
-
-// -----------------------------
-// Configuración de Multer (para subir archivos CSV)
-// -----------------------------
 const upload = multer({ dest: "uploads/" });
 
-// -----------------------------
-// Ruta principal: muestra el formulario HTML
-// -----------------------------
-app.get("/", (req, res) => {
-  // En lugar de enviar texto, ahora enviamos el index.html
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
-
-// -----------------------------
-// Ruta para subir y procesar CSV
-// -----------------------------
-app.post("/upload", upload.single("file"), async (req, res) => {
-  const filePath = req.file.path;
-  const results = [];
-
+// === 1️⃣ SUBIDA Y PREVISUALIZACIÓN ===
+app.post("/upload", upload.single("file"), (req, res) => {
   try {
-    fs.createReadStream(filePath)
-      .pipe(csv())
-      .on("data", (data) => results.push(data))
-      .on("end", async () => {
-        fs.unlinkSync(filePath); // elimina el archivo temporal
+    const filePath = req.file.path;
 
-        res.json({
-          message: "Archivo CSV procesado correctamente",
-          rows: results.length,
-          sample: results.slice(0, 5),
-        });
-      });
+    // Leer archivo Excel
+    const workbook = xlsx.readFile(filePath);
+    const sheetName = workbook.SheetNames[0];
+    const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
+
+    // Seleccionar solo columnas relevantes (pueden cambiarse según tu Excel)
+    const preview = data.map((row) => ({
+      Producto: row.Producto || row["Nombre del producto"] || "",
+      SKU: row.SKU || row["Código"] || "",
+      Precio: row.Precio || row["Precio"] || "",
+      Fecha: row.Fecha || new Date().toISOString().split("T")[0],
+    }));
+
+    // Borrar el archivo temporal
+    fs.unlinkSync(filePath);
+
+    // Enviar previsualización al frontend
+    res.json({ preview });
   } catch (error) {
-    console.error("Error procesando CSV:", error);
-    res.status(500).json({ error: "Error al procesar el archivo CSV" });
+    console.error("Error procesando archivo:", error);
+    res.status(500).json({ error: "Error procesando archivo" });
   }
 });
 
-// -----------------------------
-// Puerto dinámico (Render usa process.env.PORT)
-// -----------------------------
-const PORT = process.env.PORT || 3000;
+// === 2️⃣ CONFIRMACIÓN DE ACTUALIZACIÓN ===
+app.post("/confirm", (req, res) => {
+  const { data } = req.body;
+
+  // ⚙️ Aquí iría tu lógica real de actualización (API, BD, etc.)
+  // Por ahora solo simulamos:
+  console.log("Datos confirmados:", data);
+
+  res.json({ message: "Actualización confirmada correctamente" });
+});
+
+// === 3️⃣ DEFAULT ROUTE ===
+app.get("/", (req, res) => {
+  res.sendFile(path.join(process.cwd(), "public", "index.html"));
+});
+
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`Servidor escuchando en el puerto ${PORT}`);
+  console.log(`🚀 Servidor funcionando en el puerto ${PORT}`);
 });
