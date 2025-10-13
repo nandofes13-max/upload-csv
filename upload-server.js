@@ -20,22 +20,19 @@ function toDDMMYY(raw) {
   if (raw === null || raw === undefined || raw === "") return "";
   // Si viene como número (serial Excel)
   if (typeof raw === "number") {
-    const date = new Date((raw - 25569) * 86400 * 1000);
-    const dd = String(date.getDate()).padStart(2, "0");
-    const mm = String(date.getMonth() + 1).padStart(2, "0");
-    const yy = String(date.getFullYear()).slice(-2);
+    const date = new Date(Math.round((raw - 25569) * 86400 * 1000));
+    const dd = String(date.getUTCDate()).padStart(2, "0");
+    const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+    const yy = String(date.getUTCFullYear()).slice(-2);
     return `${dd}/${mm}/${yy}`;
   }
-  // Si viene Date object
   if (raw instanceof Date) {
     const dd = String(raw.getDate()).padStart(2, "0");
     const mm = String(raw.getMonth() + 1).padStart(2, "0");
     const yy = String(raw.getFullYear()).slice(-2);
     return `${dd}/${mm}/${yy}`;
   }
-  // Si viene string, intentar parsear formatos comunes
   const s = String(raw).trim();
-  // formatos ya dd/mm/yy o dd/mm/yyyy
   const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
   if (m) {
     const dd = m[1].padStart(2, "0");
@@ -43,7 +40,6 @@ function toDDMMYY(raw) {
     const yy = m[3].length === 4 ? m[3].slice(-2) : m[3];
     return `${dd}/${mm}/${yy}`;
   }
-  // fallback: devolver tal cual (pero mejor dejar vacío)
   return s;
 }
 
