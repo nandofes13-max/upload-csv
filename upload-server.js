@@ -154,15 +154,14 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       }
 
       // Añadir fila al preview
-      preview.push({
-        product_name: apiProduct ? apiProduct.name : "(no encontrado)",
-        sku,
-        price_current: apiProduct ? apiProduct.price : "",
-        price_new: precio,
-        date_new: fecha,
-        jumpseller_id: apiProduct ? apiProduct.id : null,
-        api_status: apiStatus || null
-      });
+     preview.push({
+  product_name: apiProduct ? apiProduct.name : "(no encontrado)",
+  sku,
+  price_new: precio,
+  date_new: fecha,
+  jumpseller_id: apiProduct ? apiProduct.id : null,
+  api_status: apiStatus || null
+});
     }
 
     // remove temp file
