@@ -198,12 +198,13 @@ app.post("/confirm", async (req, res) => {
     // Construir cuerpo de actualización: revisá y ajustá si tu API espera otro shape
     // Intentamos enviar precio y custom_field_1
     const body = {
-      product: {
-        price: Number(String(priceNewRaw).replace(",", ".")) || 0,
-        custom_field_1_label: "Fecha",
-        custom_field_1_value: dateNew
-      }
-    };
+    product: {
+    price: Number(String(priceNewRaw).replace(",", ".")) || 0,
+    custom_field_1_label: "Fecha",
+    custom_field_1_value: dateNew,
+    custom_field_1_type: "input"
+  }
+};
 
     try {
       // PUT /products/{id}.json
