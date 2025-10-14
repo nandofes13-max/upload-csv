@@ -162,62 +162,54 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 // ------------------
 app.post("/confirm", async (req, res) => {
   const payload = req.body?.data;
-  if (!Array.isArray(payload) || payload.length === 0) return res.status(400).json({ error: "No hay datos para actualizar" });
+  if (!Array.isArray(payload) || payload.length === 0)
+    return res.status(400).json({ error: "No hay datos para actualizar" });
 
   const jsClient = createJumpsellerClient();
-
-  // --- LOGAR PRODUCTO ESPECÍFICO ---
-try {
-  const resp = await jsClient.get(`/products/14782189.json`);
-  console.log(`--- Producto ID 14782189 ---`);
-  console.log(JSON.stringify(resp.data, null, 2));
-  console.log('-------------------------------');
-} catch (err) {
-  console.error("Error al obtener el producto:", 14782189, err?.response?.status, err?.response?.data || err?.message);
-}
-// --- FIN LOG ---
-
   const results = [];
 
- for (const item of payload) {
-  const { sku, price_new: priceNewRaw, date_new: dateNew, jumpseller_id: productId } = item;
+  for (const item of payload) {
+    const { sku, price_new: priceNewRaw, date_new: dateNew, jumpseller_id: productId } = item;
 
-  if (!productId) {
-    results.push({ sku, ok: false, message: "Producto no encontrado en Jumpseller (no se actualiza)" });
-    continue;
-  }
-
-  // Normalizar la fecha antes de enviar (por si viene como xx/xx/xxxx)
-  const fechaParaEnviar = toDDMMYY(dateNew);
-
-  // --- CAMBIO AQUÍ: usar el id del campo existente para actualizarlo ---
-  const body = {
-    product: {
-      price: Number(String(priceNewRaw).replace(",", ".")) || 0,
-      fields: [
-        {
-          id: 7411708,  // id del campo existente "Fecha"
-          value: fechaParaEnviar
-        }
-      ]
+    if (!productId) {
+      results.push({ sku, ok: false, message: "Producto no encontrado en Jumpseller (no se actualiza)" });
+      continue;
     }
-  };
 
-  console.log(`PUT → SKU ${sku} | ID ${productId} | Fecha enviada: ${fechaParaEnviar}`);
+    // Normalizar la fecha antes de enviar (por si viene como xx/xx/xxxx)
+    const fechaParaEnviar = toDDMMYY(dateNew);
 
-  try {
-    const resp = await jsClient.put(`/products/${productId}.json`, body);
-    results.push({ sku, ok: true, status: resp.status, data: resp.data });
-  } catch (err) {
-    console.error("Error actualizando producto:", sku, productId, err?.response?.status, err?.response?.data || err?.message);
-    results.push({
-      sku,
-      ok: false,
-      status: err?.response?.status || null,
-      message: err?.response?.data || err?.message,
-    });
+    // 🧩 Actualizar precio y campo personalizado "Fecha" (ID 32703)
+    const body = {
+      product: {
+        price: Number(String(priceNewRaw).replace(",", ".")) || 0,
+        fields: [
+          {
+            custom_field_id: 32703, // campo "Fecha" en Jumpseller
+            value: fechaParaEnviar
+          }
+        ]
+      }
+    };
+
+    console.log(`PUT → SKU ${sku} | ID ${productId} | Fecha enviada: ${fechaParaEnviar}`);
+
+    try {
+      const resp = await jsClient.put(`/products/${productId}.json`, body);
+      results.push({ sku, ok: true, status: resp.status });
+    } catch (err) {
+      console.error("Error actualizando producto:", sku, productId, err?.response?.status, err?.response?.data || err?.message);
+      results.push({
+        sku,
+        ok: false,
+        status: err?.response?.status || null,
+        message: err?.response?.data || err?.message,
+      });
+    }
   }
-}
+
+  return res.json({ results });
+});
 
   return res.json({ results });
 });
