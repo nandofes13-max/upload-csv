@@ -14,28 +14,20 @@ app.use(express.static(path.join(process.cwd(), "public")));
 
 const upload = multer({ dest: "uploads/" });
 
+// --- Helpers ---
+// Convierte Excel strings a "DD/MM/AA" como texto
 function toDDMMYY(raw) {
   if (raw === null || raw === undefined || raw === "") return "";
 
-  // Si viene como número (serial Excel)
-  if (typeof raw === "number") {
-    const date = new Date(Math.round((raw - 25569) * 86400 * 1000));
-    // ⚠️ Usamos UTC para que no reste un día en GMT-3
-    const dd = String(date.getUTCDate()).padStart(2, "0");
-    const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
-    const yy = String(date.getUTCFullYear()).slice(-2);
-    return `${dd}/${mm}/${yy}`; // siempre string
-  }
-
-  // Si ya es objeto Date
+  // Si ya viene como Date → convertir a texto
   if (raw instanceof Date) {
     const dd = String(raw.getDate()).padStart(2, "0");
     const mm = String(raw.getMonth() + 1).padStart(2, "0");
     const yy = String(raw.getFullYear()).slice(-2);
-    return `${dd}/${mm}/${yy}`; // siempre string
+    return `${dd}/${mm}/${yy}`;
   }
 
-  // Si viene como texto, lo devolvemos formateado si tiene patrón
+  // Si viene string dd/mm/yy o dd/mm/yyyy
   const s = String(raw).trim();
   const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
   if (m) {
@@ -45,47 +37,28 @@ function toDDMMYY(raw) {
     return `${dd}/${mm}/${yy}`;
   }
 
-  return s; // si ya viene como texto, lo dejamos igual
+  // fallback: devolver tal cual
+  return s;
 }
 
-
-// Build axios instance for Jumpseller with Basic Auth (login:token)
+// Crear cliente Jumpseller con Basic Auth
 function createJumpsellerClient() {
   const login = process.env.JUMPS_LOGIN;
   const token = process.env.JUMPS_TOKEN;
-  if (!login || !token) {
-    throw new Error("Faltan JUMPS_LOGIN o JUMPS_TOKEN en variables de entorno.");
-  }
+  if (!login || !token) throw new Error("Faltan JUMPS_LOGIN o JUMPS_TOKEN.");
   return axios.create({
     baseURL: "https://api.jumpseller.com/v1",
-    auth: {
-      username: login,
-      password: token
-    },
+    auth: { username: login, password: token },
     timeout: 30_000
   });
 }
 
-// Extrae precio/sku/nombre de respuesta de Jumpseller (defensivo)
+// Normalizar producto de API Jumpseller
 function normalizeProductFromApi(obj) {
-  // intentamos varias rutas comunes
-  // obj puede variar según endpoint. Hacemos defensivo:
   const id = obj.id || obj.product_id || obj.product?.id || obj.id_product || null;
-  const name =
-    obj.name ||
-    obj.title ||
-    (obj.product && (obj.product.name || obj.product.title)) ||
-    "";
-  const sku =
-    obj.sku ||
-    obj.sku_code ||
-    (obj.variants && obj.variants[0] && obj.variants[0].sku) ||
-    "";
-  const price =
-    obj.price ||
-    obj.price_with_currency ||
-    (obj.variants && obj.variants[0] && obj.variants[0].price) ||
-    "";
+  const name = obj.name || obj.title || (obj.product && (obj.product.name || obj.product.title)) || "";
+  const sku = obj.sku || obj.sku_code || (obj.variants && obj.variants[0]?.sku) || "";
+  const price = obj.price || obj.price_with_currency || (obj.variants && obj.variants[0]?.price) || "";
   return { id, name, sku, price };
 }
 
@@ -97,149 +70,29 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 
   const filePath = req.file.path;
   try {
-    // Leer Excel (primera hoja)
     const workbook = xlsx.readFile(filePath);
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-
-    // Leer todas las filas
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rawRows = xlsx.utils.sheet_to_json(sheet, { defval: "" });
 
-    // Normalizar filas
-    const rows = rawRows.map(row => {
-      const newRow = {};
-      for (const k of Object.keys(row)) {
-        const key = k.toLowerCase().trim();
-
-        // Columna fecha → texto DD/MM/AA
-        if (key.includes("fecha")) {
-          newRow[key] = toDDMMYY(row[k]);
-        }
-        // Columna precio → decimal
-        else if (key.includes("precio") || key.includes("price") || key.includes("importe")) {
-          const raw = String(row[k] || "").replace(/[^\d\.,-]/g, "").replace(",", ".");
-          newRow[key] = raw ? Number(raw) : 0;
-        }
-        // Todo lo demás → texto
-        else {
-          newRow[key] = row[k] != null ? String(row[k]) : "";
-        }
-      }
-      return newRow;
-    });
-
-    // Crear cliente Jumpseller
     const jsClient = createJumpsellerClient();
-
     const preview = [];
-    for (const row of rows) {
-      // Normalizar llaves a minúsculas sin espacios
+
+    for (const row of rawRows) {
       const keys = {};
-      for (const k of Object.keys(row)) {
-        keys[k.toLowerCase().trim()] = row[k];
-      }
+      for (const k of Object.keys(row)) keys[k.toLowerCase().trim()] = row[k];
 
-      const skuRaw = keys["cod.int"] !== undefined ? keys["cod.int"] : keys["cod.int "] !== undefined ? keys["cod.int "] : keys["cod.int"] || keys["cod.int"];
-      const sku = (skuRaw || keys["cod int"] || keys["codint"] || keys["codigo"] || keys["codigo interno"] || keys["cod"])?.toString().trim() || "";
+      const skuRaw = keys["cod.int"] ?? keys["cod int"] ?? keys["codint"] ?? keys["codigo"] ?? keys["codigo interno"] ?? keys["cod"];
+      const sku = skuRaw?.toString().trim() || "";
 
-      const precio = keys["precio"] || keys["price"] || keys["importe"] || 0;
-      const fecha = keys["fecha"] || keys["fecha actualizacion"] || keys["fecha actualización"] || keys["fecha_modificacion"] || "";
+      // Precio como decimal
+      const precioRaw = keys["precio"] || keys["price"] || keys["importe"] || 0;
+      const precio = Number(String(precioRaw).replace(/[^\d\.,-]/g, "").replace(",", ".")) || 0;
 
-      // Buscar producto en Jumpseller por SKU
+      // Fecha como texto
+      const fechaRaw = keys["fecha"] || keys["fecha actualizacion"] || keys["fecha actualización"] || keys["fecha_modificacion"] || "";
+      const fecha = toDDMMYY(fechaRaw);
+
+      // Buscar producto en Jumpseller
       let apiProduct = null;
       try {
-        const resp = await jsClient.get(`/products/search.json`, { params: { query: sku } });
-        const data = resp.data;
-        let found = null;
-
-        if (Array.isArray(data) && data.length) found = data[0];
-        else if (data && data.products && Array.isArray(data.products) && data.products.length) found = data.products[0];
-        else if (data && data.product) found = data.product;
-
-        if (found) apiProduct = normalizeProductFromApi(found);
-      } catch (err) {
-        console.error("Error buscando SKU en Jumpseller:", sku, err?.response?.status, err?.message);
-      }
-
-      // Añadir fila al preview
-      preview.push({
-        product_name: apiProduct ? apiProduct.name : "(no encontrado)",
-        sku,
-        price_new: precio,
-        date_new: fecha,
-        jumpseller_id: apiProduct ? apiProduct.id : null,
-        api_status: null
-      });
-    }
-
-    // Eliminar archivo temporal
-    fs.unlinkSync(filePath);
-
-    return res.json({ preview });
-  } catch (error) {
-    console.error("Error procesando archivo:", error);
-    try { fs.unlinkSync(filePath); } catch (e) {}
-    return res.status(500).json({ error: error.message || "Error interno" });
-  }
-});
-
-// ------------------
-// RUTA: confirmar y actualizar TODOS los productos
-// ------------------
-app.post("/confirm", async (req, res) => {
-  // Body: { data: [ { sku, price_new, date_new, jumpseller_id } ] }
-  const payload = req.body && req.body.data;
-  if (!Array.isArray(payload) || payload.length === 0) {
-    return res.status(400).json({ error: "No hay datos para actualizar" });
-  }
-
-  const jsClient = createJumpsellerClient();
-  const results = [];
-
-  for (const item of payload) {
-    const sku = item.sku;
-    const priceNew = item.price_new;
-    const dateNew = item.date_new; // ya en DD/MM/AA como string
-    const productId = item.jumpseller_id;
-
-    if (!productId) {
-      results.push({ sku, ok: false, message: "Producto no encontrado en Jumpseller (no se actualiza)" });
-      continue;
-    }
-
-    // Construir cuerpo de actualización
-    const body = {
-      product: {
-        price: Number(priceNew) || 0,
-        custom_field_1_value: String(dateNew) // enviamos fecha como texto
-      }
-    };
-
-    console.log("Actualizando SKU:", sku, "con fecha:", dateNew, "precio:", priceNew);
-
-    try {
-      const resp = await jsClient.put(`/products/${productId}.json`, body);
-      results.push({ sku, ok: true, status: resp.status, data: resp.data });
-    } catch (err) {
-      console.error("Error actualizando producto:", sku, productId, err?.response?.status, err?.response?.data || err?.message);
-      results.push({
-        sku,
-        ok: false,
-        status: err?.response?.status || null,
-        message: err?.response?.data || err?.message
-      });
-    }
-  }
-
-  return res.json({ results });
-});
-
-// Ruta raíz: servir index.html
-app.get("/", (req, res) => {
-  res.sendFile(path.join(process.cwd(), "public", "index.html"));
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Servidor escuchando en el puerto ${PORT}`);
-});
+        const resp = await jsClient.get(`/products/search.json`, {
