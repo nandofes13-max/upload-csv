@@ -93,7 +93,8 @@ app.post("/upload", upload.single("file"), async (req, res) => {
   const precioRaw = keys["precio"] || keys["price"] || keys["importe"] || "";
   const precio = precioRaw === "" ? "" : String(precioRaw).replace(/[^\d\.,-]/g, "").replace(",", ".");
   const fechaRaw = keys["fecha"] || keys["fecha actualizacion"] || keys["fecha actualización"] || keys["fecha_modificacion"] || "";
-  const fecha = String(fechaRaw).trim(); // texto limpio
+  const fecha = toDDMMYY(fechaRaw); // <-- normaliza a formato DD/MM/YY
+
 
   // 🧠 VALIDACIONES COD.INT
   let errorCodInt = "";
