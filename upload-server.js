@@ -190,16 +190,22 @@ try {
    // Normalizar la fecha antes de enviar (por si viene como xx/xx/xxxx)
 const fechaParaEnviar = toDDMMYY(dateNew);
 
+// Nuevo body para actualizar el campo "Fecha" de manera segura
 const body = {
   product: {
     price: Number(String(priceNewRaw).replace(",", ".")) || 0,
-    custom_field_1_label: "Fecha",
-    custom_field_1_value: fechaParaEnviar,
-    custom_field_1_type: "input",
-  },
+    fields: [
+      {
+        id: 7411708, // ID del campo "Fecha" que vimos en el log
+        value: fechaParaEnviar
+      }
+    ]
+  }
 };
 
+// Log para ver qué estamos enviando
 console.log(`PUT → SKU ${sku} | ID ${productId} | Fecha enviada: ${fechaParaEnviar}`);
+
 
 
     try {
