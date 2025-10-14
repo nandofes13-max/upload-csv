@@ -166,6 +166,18 @@ app.post("/confirm", async (req, res) => {
     return res.status(400).json({ error: "No hay datos para actualizar" });
 
   const jsClient = createJumpsellerClient();
+
+  // --- LOGAR PRODUCTO ESPECÍFICO ---
+  try {
+    const resp = await jsClient.get(`/products/14782189.json`);
+    console.log(`--- Producto ID 14782189 ---`);
+    console.log(JSON.stringify(resp.data, null, 2));
+    console.log('-------------------------------');
+  } catch (err) {
+    console.error("Error al obtener el producto:", 14782189, err?.response?.status, err?.response?.data || err?.message);
+  }
+  // --- FIN LOG ---
+
   const results = [];
 
   for (const item of payload) {
@@ -176,16 +188,16 @@ app.post("/confirm", async (req, res) => {
       continue;
     }
 
-    // Normalizar la fecha antes de enviar (por si viene como xx/xx/xxxx)
+    // Normalizar la fecha antes de enviar
     const fechaParaEnviar = toDDMMYY(dateNew);
 
-    // 🧩 Actualizar precio y campo personalizado "Fecha" (ID 32703)
+    // --- Cuerpo de actualización ---
     const body = {
       product: {
         price: Number(String(priceNewRaw).replace(",", ".")) || 0,
         fields: [
           {
-            custom_field_id: 32703, // campo "Fecha" en Jumpseller
+            custom_field_id: 32703, // ID del campo "Fecha" en Jumpseller
             value: fechaParaEnviar
           }
         ]
