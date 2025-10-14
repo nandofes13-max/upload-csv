@@ -110,16 +110,6 @@ app.post("/upload", upload.single("file"), async (req, res) => {
     errorCodInt = "Código demasiado largo";
   }
 
-  // Evitar duplicados dentro del mismo Excel
-  if (!errorCodInt) {
-    if (!global._seenSkus) global._seenSkus = new Set();
-    if (global._seenSkus.has(sku)) {
-      errorCodInt = "Código duplicado en Excel";
-    } else {
-      global._seenSkus.add(sku);
-    }
-  }
-
   let apiProduct = null;
   let apiStatus = null;
 
