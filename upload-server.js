@@ -194,11 +194,12 @@ try {
   const body = {
     product: {
       price: Number(String(priceNewRaw).replace(",", ".")) || 0,
-      fields: [
-        {
-          id: 7411708,  // id del campo existente "Fecha"
-          value: fechaParaEnviar
-        }
+     custom_fields: [
+      {
+        // Actualizando por Nombre:
+        name: "Fecha", // Debe coincidir EXACTAMENTE con el nombre en Jumpseller
+        value: fechaParaEnviar
+          }
       ]
     }
   };
