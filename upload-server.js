@@ -1,234 +1,94 @@
-// upload-server.js
-const express = require("express");
-const multer = require("multer");
-const path = require("path");
-const cors = require("cors");
-const fs = require("fs");
-const xlsx = require("xlsx");
-const axios = require("axios");
+import express from "express";
+import multer from "multer";
+import xlsx from "xlsx";
+import { createJumpsellerClient } from "./jumpseller-client.js";
 
 const app = express();
-app.use(cors());
-app.use(express.json());
-app.use(express.static(path.join(process.cwd(), "public")));
-
 const upload = multer({ dest: "uploads/" });
+const PORT = process.env.PORT || 10000;
 
-// --- Helpers ---
-function toDDMMYY(raw) {
-  if (raw === null || raw === undefined || raw === "") return "";
-
-  // Si viene como número (serial Excel)
-  if (typeof raw === "number") {
-    const date = new Date(Math.round((raw - 25569) * 86400 * 1000));
-    const dd = String(date.getUTCDate()).padStart(2, "0");
-    const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
-    const yy = String(date.getUTCFullYear()).slice(-2);
-    return `${dd}/${mm}/${yy}`;
-  }
-
-  if (raw instanceof Date) {
-    const dd = String(raw.getDate()).padStart(2, "0");
-    const mm = String(raw.getMonth() + 1).padStart(2, "0");
-    const yy = String(raw.getFullYear()).slice(-2);
-    return `${dd}/${mm}/${yy}`;
-  }
-
-  const s = String(raw).trim();
-  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
-  if (m) {
-    const dd = m[1].padStart(2, "0");
-    const mm = m[2].padStart(2, "0");
-    const yy = m[3].length === 4 ? m[3].slice(-2) : m[3];
-    return `${dd}/${mm}/${yy}`;
-  }
-
-  return s;
+// --- Función para normalizar fecha ---
+function toDDMMYY(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const year = String(d.getFullYear()).slice(-2);
+  return `${day}/${month}/${year}`;
 }
 
-// Crear cliente Jumpseller
-function createJumpsellerClient() {
-  const login = process.env.JUMPS_LOGIN;
-  const token = process.env.JUMPS_TOKEN;
-  if (!login || !token) throw new Error("Faltan JUMPS_LOGIN o JUMPS_TOKEN");
-  return axios.create({
-    baseURL: "https://api.jumpseller.com/v1",
-    auth: { username: login, password: token },
-    timeout: 30_000,
-  });
-}
-
-// Normalizar producto de respuesta Jumpseller
-function normalizeProductFromApi(obj) {
-  const id = obj.id || obj.product_id || obj.product?.id || obj.id_product || null;
-  const name = obj.name || obj.title || (obj.product && (obj.product.name || obj.product.title)) || "";
-  const sku = obj.sku || obj.sku_code || (obj.variants && obj.variants[0]?.sku) || "";
-  const price = obj.price || obj.price_with_currency || (obj.variants && obj.variants[0]?.price) || "";
-  return { id, name, sku, price };
-}
-
-// ------------------
-// RUTA: subida y previsualización
-// ------------------
+// --- Ruta principal ---
 app.post("/upload", upload.single("file"), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: "No se subió archivo" });
-
-  const filePath = req.file.path;
-
   try {
-    const workbook = xlsx.readFile(filePath);
+    const workbook = xlsx.readFile(req.file.path);
     const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    const rows = xlsx.utils.sheet_to_json(sheet, { defval: "" });
-
+    const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
     const jsClient = createJumpsellerClient();
-    const preview = [];
 
-    for (const row of rows) {
-  const keys = {};
-  for (const k of Object.keys(row)) keys[k.toLowerCase().trim()] = row[k];
+    const results = [];
 
-  const skuRaw = keys["cod.int"] ?? keys["cod int"] ?? keys["codint"] ?? keys["codigo"] ?? keys["codigo interno"] ?? keys["cod"];
-  const sku = skuRaw?.toString().trim() || "";
-  const precioRaw = keys["precio"] || keys["price"] || keys["importe"] || "";
-  const precio = precioRaw === "" ? "" : String(precioRaw).replace(/[^\d\.,-]/g, "").replace(",", ".");
-  const fechaRaw = keys["fecha"] || keys["fecha actualizacion"] || keys["fecha actualización"] || keys["fecha_modificacion"] || "";
-  const fecha = toDDMMYY(fechaRaw); // <-- normaliza a formato DD/MM/YY
+    for (const row of data) {
+      const sku = row["COD. INT"];
+      const priceNewRaw = row["PRECIO"];
+      const dateNew = row["Custom Field 1 Value"];
 
+      if (!sku) continue;
 
-  // 🧠 VALIDACIONES COD.INT
-  let errorCodInt = "";
+      try {
+        // Buscar el producto por SKU
+        const searchResp = await jsClient.get(`/products.json?sku=${sku}`);
+        const product = searchResp.data?.[0];
+        if (!product) {
+          console.log(`❌ No encontrado SKU ${sku}`);
+          continue;
+        }
 
-  if (!sku) {
-    errorCodInt = "Código vacío o ausente";
-  } else if (sku === "0") {
-    errorCodInt = "Código igual a 0";
-  } else if (!/^[A-Za-z0-9\-_]+$/.test(sku)) {
-    errorCodInt = "Contiene caracteres inválidos";
-  } else if (sku.length < 3) {
-    errorCodInt = "Código demasiado corto";
-  } else if (sku.length > 30) {
-    errorCodInt = "Código demasiado largo";
-  }
+        // Buscar el campo "Fecha" dentro del producto
+        const campoFecha = product.fields?.find(
+          f => f.label === "Fecha" || f.custom_field_id === 32703
+        );
 
-  let apiProduct = null;
-  let apiStatus = null;
+        if (!campoFecha) {
+          console.log(`⚠️ SKU ${sku} no tiene campo 'Fecha'`);
+          continue;
+        }
 
-  // Si hay error en COD.INT, no busca en Jumpseller
-  if (!errorCodInt) {
-    try {
-      const resp = await jsClient.get(`/products/search.json`, { params: { query: sku } });
-      apiStatus = resp.status;
-      const data = resp.data;
-      let found = null;
-      if (Array.isArray(data) && data.length) found = data[0];
-      else if (data?.products?.length) found = data.products[0];
-      else if (data?.product) found = data.product;
-      else if (data && typeof data === "object") {
-        const arr = Object.values(data).flat().filter(Boolean);
-        if (arr.length) found = arr[0];
+        const fechaParaEnviar = toDDMMYY(dateNew);
+
+        const body = {
+          product: {
+            price: Number(String(priceNewRaw).replace(",", ".")) || 0,
+            fields: [
+              {
+                id: campoFecha.id, // dinámico según producto
+                value: fechaParaEnviar
+              }
+            ]
+          }
+        };
+
+        console.log(`PUT → SKU ${sku} | ID ${product.id} | Campo Fecha ID ${campoFecha.id} | Fecha enviada: ${fechaParaEnviar}`);
+
+        await jsClient.put(`/products/${product.id}.json`, body);
+
+        console.log(`✅ Actualizado correctamente: ${sku}`);
+        results.push({ sku, status: "OK" });
+
+      } catch (err) {
+        console.error(`❌ Error al actualizar SKU ${sku}:`, err.response?.status, err.response?.data || err.message);
+        results.push({ sku, status: "ERROR" });
       }
-      if (found) apiProduct = normalizeProductFromApi(found);
-      else errorCodInt = "No encontrado en Jumpseller";
-    } catch (err) {
-      console.error("Error buscando SKU en Jumpseller:", sku, err?.response?.status, err?.message);
-      errorCodInt = "Error consultando Jumpseller";
     }
-  }
 
-  preview.push({
-    product_name: apiProduct?.name || "(no encontrado)",
-    sku,
-    price_new: precio,
-    date_new: fecha,
-    jumpseller_id: apiProduct?.id || null,
-    api_status: apiStatus || null,
-    error_cod_int: errorCodInt, // <-- NUEVA COLUMNA
-  });
-}
-
-
-    fs.unlinkSync(filePath);
-    return res.json({ preview });
+    res.json({ success: true, updated: results.length });
   } catch (error) {
-    console.error("Error procesando archivo:", error);
-    try { fs.unlinkSync(filePath); } catch (e) {}
-    return res.status(500).json({ error: error.message || "Error interno" });
+    console.error("❌ Error general:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// ------------------
-// RUTA: confirmar y actualizar TODOS los productos
-// ------------------
-app.post("/confirm", async (req, res) => {
-  const payload = req.body?.data;
-  if (!Array.isArray(payload) || payload.length === 0)
-    return res.status(400).json({ error: "No hay datos para actualizar" });
-
-  const jsClient = createJumpsellerClient();
-
-  // --- LOGAR PRODUCTO ESPECÍFICO ---
-  try {
-    const resp = await jsClient.get(`/products/14782189.json`);
-    console.log(`--- Producto ID 14782189 ---`);
-    console.log(JSON.stringify(resp.data, null, 2));
-    console.log('-------------------------------');
-  } catch (err) {
-    console.error("Error al obtener el producto:", 14782189, err?.response?.status, err?.response?.data || err?.message);
-  }
-  // --- FIN LOG ---
-
-  const results = [];
-
-  for (const item of payload) {
-    const { sku, price_new: priceNewRaw, date_new: dateNew, jumpseller_id: productId } = item;
-
-    if (!productId) {
-      results.push({ sku, ok: false, message: "Producto no encontrado en Jumpseller (no se actualiza)" });
-      continue;
-    }
-
-    // Normalizar la fecha antes de enviar
-    const fechaParaEnviar = toDDMMYY(dateNew);
-
-    // --- Cuerpo de actualización ---
-    const body = {
-      product: {
-        price: Number(String(priceNewRaw).replace(",", ".")) || 0,
-        fields: [
-  {
-    id: 7411708, // ID del campo "Fecha" en este producto
-    value: fechaParaEnviar
-  }
-]
-
-      }
-    };
-
-    console.log(`PUT → SKU ${sku} | ID ${productId} | Fecha enviada: ${fechaParaEnviar}`);
-
-    try {
-      const resp = await jsClient.put(`/products/${productId}.json`, body);
-      results.push({ sku, ok: true, status: resp.status });
-      console.log(`✅ Actualizado correctamente: ${sku}`);
-    } catch (err) {
-      console.error("❌ Error actualizando producto:", sku, productId, err?.response?.status, err?.response?.data || err?.message);
-      results.push({
-        sku,
-        ok: false,
-        status: err?.response?.status || null,
-        message: err?.response?.data || err?.message,
-      });
-    }
-  }
-
-  return res.json({ results });
+// --- Iniciar servidor ---
+app.listen(PORT, () => {
+  console.log(`Servidor escuchando en puerto ${PORT}`);
+  console.log("///////////////////////////////////////////////////////////");
 });
-
-// Servir index.html
-app.get("/", (req, res) => {
-  res.sendFile(path.join(process.cwd(), "public", "index.html"));
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor escuchando en el puerto ${PORT}`));
