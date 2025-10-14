@@ -179,8 +179,10 @@ app.post("/confirm", async (req, res) => {
 
     // --- NUEVO: obtener el id del campo "Fecha" para ese producto ---
     let fieldId = null;
+    let productBefore = null;
     try {
       const productResp = await jsClient.get(`/products/${productId}.json`);
+      productBefore = productResp?.data;
       const fieldsArr =
         productResp?.data?.product?.fields ||
         productResp?.data?.fields ||
@@ -194,6 +196,11 @@ app.post("/confirm", async (req, res) => {
     } catch (err) {
       console.error(`No se pudo obtener el campo "Fecha" para producto ${productId}:`, err?.response?.status, err?.message);
     }
+
+    // --- LOG ANTES DE ACTUALIZAR ---
+    console.log(`--- Producto antes de actualización: ID ${productId} ---`);
+    console.log(JSON.stringify(productBefore, null, 2));
+    console.log('-------------------------------');
 
     // --- CAMBIO AQUÍ: usar el id del campo existente para actualizarlo, si existe ---
     const fieldObj = fieldId
@@ -213,6 +220,12 @@ app.post("/confirm", async (req, res) => {
 
     try {
       const resp = await jsClient.put(`/products/${productId}.json`, body);
+
+      // --- LOG DESPUÉS DE ACTUALIZAR ---
+      console.log(`--- Producto después de actualización: ID ${productId} ---`);
+      console.log(JSON.stringify(resp.data, null, 2));
+      console.log('-------------------------------');
+
       results.push({ sku, ok: true, status: resp.status, data: resp.data });
     } catch (err) {
       console.error(
