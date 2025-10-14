@@ -85,68 +85,66 @@ app.post("/upload", upload.single("file"), async (req, res) => {
     const preview = [];
 
     for (const row of rows) {
-  const keys = {};
-  for (const k of Object.keys(row)) keys[k.toLowerCase().trim()] = row[k];
+      const keys = {};
+      for (const k of Object.keys(row)) keys[k.toLowerCase().trim()] = row[k];
 
-  const skuRaw = keys["cod.int"] ?? keys["cod int"] ?? keys["codint"] ?? keys["codigo"] ?? keys["codigo interno"] ?? keys["cod"];
-  const sku = skuRaw?.toString().trim() || "";
-  const precioRaw = keys["precio"] || keys["price"] || keys["importe"] || "";
-  const precio = precioRaw === "" ? "" : String(precioRaw).replace(/[^\d\.,-]/g, "").replace(",", ".");
-  const fechaRaw = keys["fecha"] || keys["fecha actualizacion"] || keys["fecha actualización"] || keys["fecha_modificacion"] || "";
-  const fecha = toDDMMYY(fechaRaw); // <-- normaliza a formato DD/MM/YY
+      const skuRaw = keys["cod.int"] ?? keys["cod int"] ?? keys["codint"] ?? keys["codigo"] ?? keys["codigo interno"] ?? keys["cod"];
+      const sku = skuRaw?.toString().trim() || "";
+      const precioRaw = keys["precio"] || keys["price"] || keys["importe"] || "";
+      const precio = precioRaw === "" ? "" : String(precioRaw).replace(/[^\d\.,-]/g, "").replace(",", ".");
+      const fechaRaw = keys["fecha"] || keys["fecha actualizacion"] || keys["fecha actualización"] || keys["fecha_modificacion"] || "";
+      const fecha = toDDMMYY(fechaRaw); // <-- normaliza a formato DD/MM/YY
 
+      // 🧠 VALIDACIONES COD.INT
+      let errorCodInt = "";
 
-  // 🧠 VALIDACIONES COD.INT
-  let errorCodInt = "";
-
-  if (!sku) {
-    errorCodInt = "Código vacío o ausente";
-  } else if (sku === "0") {
-    errorCodInt = "Código igual a 0";
-  } else if (!/^[A-Za-z0-9\-_]+$/.test(sku)) {
-    errorCodInt = "Contiene caracteres inválidos";
-  } else if (sku.length < 3) {
-    errorCodInt = "Código demasiado corto";
-  } else if (sku.length > 30) {
-    errorCodInt = "Código demasiado largo";
-  }
-
-  let apiProduct = null;
-  let apiStatus = null;
-
-  // Si hay error en COD.INT, no busca en Jumpseller
-  if (!errorCodInt) {
-    try {
-      const resp = await jsClient.get(`/products/search.json`, { params: { query: sku } });
-      apiStatus = resp.status;
-      const data = resp.data;
-      let found = null;
-      if (Array.isArray(data) && data.length) found = data[0];
-      else if (data?.products?.length) found = data.products[0];
-      else if (data?.product) found = data.product;
-      else if (data && typeof data === "object") {
-        const arr = Object.values(data).flat().filter(Boolean);
-        if (arr.length) found = arr[0];
+      if (!sku) {
+        errorCodInt = "Código vacío o ausente";
+      } else if (sku === "0") {
+        errorCodInt = "Código igual a 0";
+      } else if (!/^[A-Za-z0-9\-_]+$/.test(sku)) {
+        errorCodInt = "Contiene caracteres inválidos";
+      } else if (sku.length < 3) {
+        errorCodInt = "Código demasiado corto";
+      } else if (sku.length > 30) {
+        errorCodInt = "Código demasiado largo";
       }
-      if (found) apiProduct = normalizeProductFromApi(found);
-      else errorCodInt = "No encontrado en Jumpseller";
-    } catch (err) {
-      console.error("Error buscando SKU en Jumpseller:", sku, err?.response?.status, err?.message);
-      errorCodInt = "Error consultando Jumpseller";
+
+      let apiProduct = null;
+      let apiStatus = null;
+
+      // Si hay error en COD.INT, no busca en Jumpseller
+      if (!errorCodInt) {
+        try {
+          const resp = await jsClient.get(`/products/search.json`, { params: { query: sku } });
+          apiStatus = resp.status;
+          const data = resp.data;
+          let found = null;
+          if (Array.isArray(data) && data.length) found = data[0];
+          else if (data?.products?.length) found = data.products[0];
+          else if (data?.product) found = data.product;
+          else if (data && typeof data === "object") {
+            const arr = Object.values(data).flat().filter(Boolean);
+            if (arr.length) found = arr[0];
+          }
+          if (found) apiProduct = normalizeProductFromApi(found);
+          else errorCodInt = "No encontrado en Jumpseller";
+        } catch (err) {
+          console.error("Error buscando SKU en Jumpseller:", sku, err?.response?.status, err?.message);
+          errorCodInt = "Error consultando Jumpseller";
+        }
+      }
+
+      preview.push({
+        product_name: apiProduct?.name || "(no encontrado)",
+        sku,
+        price_new: precio,
+        date_new: fecha,
+        jumpseller_id: apiProduct?.id || null,
+        api_status: apiStatus || null,
+        error_cod_int: errorCodInt, // <-- NUEVA COLUMNA
+      });
     }
-  }
-
-  preview.push({
-    product_name: apiProduct?.name || "(no encontrado)",
-    sku,
-    price_new: precio,
-    date_new: fecha,
-    jumpseller_id: apiProduct?.id || null,
-    api_status: apiStatus || null,
-    error_cod_int: errorCodInt, // <-- NUEVA COLUMNA
-  });
-}
-
 
     fs.unlinkSync(filePath);
     return res.json({ preview });
@@ -166,58 +164,72 @@ app.post("/confirm", async (req, res) => {
 
   const jsClient = createJumpsellerClient();
 
-  // --- LOGAR PRODUCTO ESPECÍFICO ---
-try {
-  const resp = await jsClient.get(`/products/14782189.json`);
-  console.log(`--- Producto ID 14782189 ---`);
-  console.log(JSON.stringify(resp.data, null, 2));
-  console.log('-------------------------------');
-} catch (err) {
-  console.error("Error al obtener el producto:", 14782189, err?.response?.status, err?.response?.data || err?.message);
-}
-// --- FIN LOG ---
-
   const results = [];
 
- for (const item of payload) {
-  const { sku, price_new: priceNewRaw, date_new: dateNew, jumpseller_id: productId } = item;
+  for (const item of payload) {
+    const { sku, price_new: priceNewRaw, date_new: dateNew, jumpseller_id: productId } = item;
 
-  if (!productId) {
-    results.push({ sku, ok: false, message: "Producto no encontrado en Jumpseller (no se actualiza)" });
-    continue;
-  }
-
-  // Normalizar la fecha antes de enviar (por si viene como xx/xx/xxxx)
-  const fechaParaEnviar = toDDMMYY(dateNew);
-
-  // --- CAMBIO AQUÍ: usar el id del campo existente para actualizarlo ---
-  const body = {
-    product: {
-      price: Number(String(priceNewRaw).replace(",", ".")) || 0,
-      fields: [
-      {
-        custom_field_id: 32703, // Cambia esto por el ID real de tu campo "Fecha"
-        value: fechaParaEnviar
-          }
-      ]
+    if (!productId) {
+      results.push({ sku, ok: false, message: "Producto no encontrado en Jumpseller (no se actualiza)" });
+      continue;
     }
-  };
 
-  console.log(`PUT → SKU ${sku} | ID ${productId} | Fecha enviada: ${fechaParaEnviar}`);
+    // Normalizar la fecha antes de enviar (por si viene como xx/xx/xxxx)
+    const fechaParaEnviar = toDDMMYY(dateNew);
 
-  try {
-    const resp = await jsClient.put(`/products/${productId}.json`, body);
-    results.push({ sku, ok: true, status: resp.status, data: resp.data });
-  } catch (err) {
-    console.error("Error actualizando producto:", sku, productId, err?.response?.status, err?.response?.data || err?.message);
-    results.push({
-      sku,
-      ok: false,
-      status: err?.response?.status || null,
-      message: err?.response?.data || err?.message,
-    });
+    // --- NUEVO: obtener el id del campo "Fecha" para ese producto ---
+    let fieldId = null;
+    try {
+      const productResp = await jsClient.get(`/products/${productId}.json`);
+      const fieldsArr =
+        productResp?.data?.product?.fields ||
+        productResp?.data?.fields ||
+        [];
+      const fieldFecha = fieldsArr.find(
+        (f) =>
+          (f.custom_field_id === 32703 || f.label === "Fecha") &&
+          (!f.variant_id || f.variant_id === null)
+      );
+      if (fieldFecha) fieldId = fieldFecha.id;
+    } catch (err) {
+      console.error(`No se pudo obtener el campo "Fecha" para producto ${productId}:`, err?.response?.status, err?.message);
+    }
+
+    // --- CAMBIO AQUÍ: usar el id del campo existente para actualizarlo, si existe ---
+    const fieldObj = fieldId
+      ? { id: fieldId, custom_field_id: 32703, value: fechaParaEnviar }
+      : { custom_field_id: 32703, value: fechaParaEnviar };
+
+    const body = {
+      product: {
+        price: Number(String(priceNewRaw).replace(",", ".")) || 0,
+        fields: [fieldObj],
+      },
+    };
+
+    console.log(
+      `PUT → SKU ${sku} | ID ${productId} | Fecha enviada: ${fechaParaEnviar} | field_id: ${fieldId || "nuevo"}`
+    );
+
+    try {
+      const resp = await jsClient.put(`/products/${productId}.json`, body);
+      results.push({ sku, ok: true, status: resp.status, data: resp.data });
+    } catch (err) {
+      console.error(
+        "Error actualizando producto:",
+        sku,
+        productId,
+        err?.response?.status,
+        err?.response?.data || err?.message
+      );
+      results.push({
+        sku,
+        ok: false,
+        status: err?.response?.status || null,
+        message: err?.response?.data || err?.message,
+      });
+    }
   }
-}
 
   return res.json({ results });
 });
