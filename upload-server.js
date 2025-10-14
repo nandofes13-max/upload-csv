@@ -197,8 +197,9 @@ app.post("/confirm", async (req, res) => {
     try {
       const resp = await jsClient.put(`/products/${productId}.json`, body);
       results.push({ sku, ok: true, status: resp.status });
+      console.log(`✅ Actualizado correctamente: ${sku}`);
     } catch (err) {
-      console.error("Error actualizando producto:", sku, productId, err?.response?.status, err?.response?.data || err?.message);
+      console.error("❌ Error actualizando producto:", sku, productId, err?.response?.status, err?.response?.data || err?.message);
       results.push({
         sku,
         ok: false,
@@ -207,9 +208,6 @@ app.post("/confirm", async (req, res) => {
       });
     }
   }
-
-  return res.json({ results });
-});
 
   return res.json({ results });
 });
