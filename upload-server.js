@@ -175,14 +175,20 @@ app.post("/confirm", async (req, res) => {
       continue;
     }
 
-    const body = {
-      product: {
-        price: Number(String(priceNewRaw).replace(",", ".")) || 0,
-        custom_field_1_label: "Fecha",
-        custom_field_1_value: dateNew,
-        custom_field_1_type: "input",
-      },
-    };
+   // Normalizar la fecha antes de enviar (por si viene como xx/xx/xxxx)
+const fechaParaEnviar = toDDMMYY(dateNew);
+
+const body = {
+  product: {
+    price: Number(String(priceNewRaw).replace(",", ".")) || 0,
+    custom_field_1_label: "Fecha",
+    custom_field_1_value: fechaParaEnviar,
+    custom_field_1_type: "input",
+  },
+};
+
+console.log(`PUT → SKU ${sku} | ID ${productId} | Fecha enviada: ${fechaParaEnviar}`);
+
 
     try {
       const resp = await jsClient.put(`/products/${productId}.json`, body);
