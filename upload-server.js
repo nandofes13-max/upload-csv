@@ -165,6 +165,18 @@ app.post("/confirm", async (req, res) => {
   if (!Array.isArray(payload) || payload.length === 0) return res.status(400).json({ error: "No hay datos para actualizar" });
 
   const jsClient = createJumpsellerClient();
+
+  // --- LOGAR PRODUCTO ESPECÍFICO ---
+try {
+  const resp = await jsClient.get(`/products/14782189.json`);
+  console.log(`--- Producto ID 14782189 ---`);
+  console.log(JSON.stringify(resp.data, null, 2));
+  console.log('-------------------------------');
+} catch (err) {
+  console.error("Error al obtener el producto:", 14782189, err?.response?.status, err?.response?.data || err?.message);
+}
+// --- FIN LOG ---
+
   const results = [];
 
   for (const item of payload) {
