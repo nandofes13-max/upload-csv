@@ -179,48 +179,45 @@ try {
 
   const results = [];
 
-  for (const item of payload) {
-    const { sku, price_new: priceNewRaw, date_new: dateNew, jumpseller_id: productId } = item;
+ for (const item of payload) {
+  const { sku, price_new: priceNewRaw, date_new: dateNew, jumpseller_id: productId } = item;
 
-    if (!productId) {
-      results.push({ sku, ok: false, message: "Producto no encontrado en Jumpseller (no se actualiza)" });
-      continue;
-    }
-
-   // Normalizar la fecha antes de enviar (por si viene como xx/xx/xxxx)
-const fechaParaEnviar = toDDMMYY(dateNew);
-
-// Usar el custom_field_id exacto que vimos en el log: 32703
-const body = {
-  product: {
-    price: Number(String(priceNewRaw).replace(",", ".")) || 0,
-    fields: [
-      {
-        custom_field_id: 32703,  // ID del campo "Fecha"
-        value: fechaParaEnviar
-      }
-    ]
+  if (!productId) {
+    results.push({ sku, ok: false, message: "Producto no encontrado en Jumpseller (no se actualiza)" });
+    continue;
   }
-};
 
-console.log(`PUT → SKU ${sku} | ID ${productId} | Fecha enviada: ${fechaParaEnviar}`);
+  // Normalizar la fecha antes de enviar (por si viene como xx/xx/xxxx)
+  const fechaParaEnviar = toDDMMYY(dateNew);
 
-
-
-
-    try {
-      const resp = await jsClient.put(`/products/${productId}.json`, body);
-      results.push({ sku, ok: true, status: resp.status, data: resp.data });
-    } catch (err) {
-      console.error("Error actualizando producto:", sku, productId, err?.response?.status, err?.response?.data || err?.message);
-      results.push({
-        sku,
-        ok: false,
-        status: err?.response?.status || null,
-        message: err?.response?.data || err?.message,
-      });
+  // --- CAMBIO AQUÍ: usar el id del campo existente para actualizarlo ---
+  const body = {
+    product: {
+      price: Number(String(priceNewRaw).replace(",", ".")) || 0,
+      fields: [
+        {
+          id: 7411708,  // id del campo existente "Fecha"
+          value: fechaParaEnviar
+        }
+      ]
     }
+  };
+
+  console.log(`PUT → SKU ${sku} | ID ${productId} | Fecha enviada: ${fechaParaEnviar}`);
+
+  try {
+    const resp = await jsClient.put(`/products/${productId}.json`, body);
+    results.push({ sku, ok: true, status: resp.status, data: resp.data });
+  } catch (err) {
+    console.error("Error actualizando producto:", sku, productId, err?.response?.status, err?.response?.data || err?.message);
+    results.push({
+      sku,
+      ok: false,
+      status: err?.response?.status || null,
+      message: err?.response?.data || err?.message,
+    });
   }
+}
 
   return res.json({ results });
 });
