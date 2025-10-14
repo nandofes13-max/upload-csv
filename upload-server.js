@@ -94,8 +94,8 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       const precioRaw = keys["precio"] || keys["price"] || keys["importe"] || "";
       const precio = precioRaw === "" ? "" : String(precioRaw).replace(/[^\d\.,-]/g, "").replace(",", ".");
 
-      const fechaRaw = keys["fecha"] || keys["fecha actualizacion"] || keys["fecha actualización"] || keys["fecha_modificacion"] || "";
-      const fecha = toDDMMYY(fechaRaw);
+     const fechaRaw = keys["fecha"] || keys["fecha actualizacion"] || keys["fecha actualización"] || keys["fecha_modificacion"] || "";
+const fecha = String(fechaRaw).trim(); // <-- siempre texto, tal cual viene del Excel
 
       let apiProduct = null;
       let apiStatus = null;
