@@ -85,47 +85,77 @@ app.post("/upload", upload.single("file"), async (req, res) => {
     const preview = [];
 
     for (const row of rows) {
-      const keys = {};
-      for (const k of Object.keys(row)) keys[k.toLowerCase().trim()] = row[k];
+  const keys = {};
+  for (const k of Object.keys(row)) keys[k.toLowerCase().trim()] = row[k];
 
-      const skuRaw = keys["cod.int"] ?? keys["cod int"] ?? keys["codint"] ?? keys["codigo"] ?? keys["codigo interno"] ?? keys["cod"];
-      const sku = skuRaw?.toString().trim() || "";
+  const skuRaw = keys["cod.int"] ?? keys["cod int"] ?? keys["codint"] ?? keys["codigo"] ?? keys["codigo interno"] ?? keys["cod"];
+  const sku = skuRaw?.toString().trim() || "";
+  const precioRaw = keys["precio"] || keys["price"] || keys["importe"] || "";
+  const precio = precioRaw === "" ? "" : String(precioRaw).replace(/[^\d\.,-]/g, "").replace(",", ".");
+  const fechaRaw = keys["fecha"] || keys["fecha actualizacion"] || keys["fecha actualización"] || keys["fecha_modificacion"] || "";
+  const fecha = String(fechaRaw).trim(); // texto limpio
 
-      const precioRaw = keys["precio"] || keys["price"] || keys["importe"] || "";
-      const precio = precioRaw === "" ? "" : String(precioRaw).replace(/[^\d\.,-]/g, "").replace(",", ".");
+  // 🧠 VALIDACIONES COD.INT
+  let errorCodInt = "";
 
-     const fechaRaw = keys["fecha"] || keys["fecha actualizacion"] || keys["fecha actualización"] || keys["fecha_modificacion"] || "";
-const fecha = String(fechaRaw).trim(); // <-- siempre texto, tal cual viene del Excel
+  if (!sku) {
+    errorCodInt = "Código vacío o ausente";
+  } else if (sku === "0") {
+    errorCodInt = "Código igual a 0";
+  } else if (!/^[A-Za-z0-9\-_]+$/.test(sku)) {
+    errorCodInt = "Contiene caracteres inválidos";
+  } else if (sku.length < 3) {
+    errorCodInt = "Código demasiado corto";
+  } else if (sku.length > 30) {
+    errorCodInt = "Código demasiado largo";
+  }
 
-      let apiProduct = null;
-      let apiStatus = null;
-
-      try {
-        const resp = await jsClient.get(`/products/search.json`, { params: { query: sku } });
-        apiStatus = resp.status;
-        const data = resp.data;
-        let found = null;
-        if (Array.isArray(data) && data.length) found = data[0];
-        else if (data?.products?.length) found = data.products[0];
-        else if (data?.product) found = data.product;
-        else if (data && typeof data === "object") {
-          const arr = Object.values(data).flat().filter(Boolean);
-          if (arr.length) found = arr[0];
-        }
-        if (found) apiProduct = normalizeProductFromApi(found);
-      } catch (err) {
-        console.error("Error buscando SKU en Jumpseller:", sku, err?.response?.status, err?.message);
-      }
-
-      preview.push({
-        product_name: apiProduct?.name || "(no encontrado)",
-        sku,
-        price_new: precio,
-        date_new: fecha,
-        jumpseller_id: apiProduct?.id || null,
-        api_status: apiStatus || null,
-      });
+  // Evitar duplicados dentro del mismo Excel
+  if (!errorCodInt) {
+    if (!global._seenSkus) global._seenSkus = new Set();
+    if (global._seenSkus.has(sku)) {
+      errorCodInt = "Código duplicado en Excel";
+    } else {
+      global._seenSkus.add(sku);
     }
+  }
+
+  let apiProduct = null;
+  let apiStatus = null;
+
+  // Si hay error en COD.INT, no busca en Jumpseller
+  if (!errorCodInt) {
+    try {
+      const resp = await jsClient.get(`/products/search.json`, { params: { query: sku } });
+      apiStatus = resp.status;
+      const data = resp.data;
+      let found = null;
+      if (Array.isArray(data) && data.length) found = data[0];
+      else if (data?.products?.length) found = data.products[0];
+      else if (data?.product) found = data.product;
+      else if (data && typeof data === "object") {
+        const arr = Object.values(data).flat().filter(Boolean);
+        if (arr.length) found = arr[0];
+      }
+      if (found) apiProduct = normalizeProductFromApi(found);
+      else errorCodInt = "No encontrado en Jumpseller";
+    } catch (err) {
+      console.error("Error buscando SKU en Jumpseller:", sku, err?.response?.status, err?.message);
+      errorCodInt = "Error consultando Jumpseller";
+    }
+  }
+
+  preview.push({
+    product_name: apiProduct?.name || "(no encontrado)",
+    sku,
+    price_new: precio,
+    date_new: fecha,
+    jumpseller_id: apiProduct?.id || null,
+    api_status: apiStatus || null,
+    error_cod_int: errorCodInt, // <-- NUEVA COLUMNA
+  });
+}
+
 
     fs.unlinkSync(filePath);
     return res.json({ preview });
