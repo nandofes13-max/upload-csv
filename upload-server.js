@@ -196,11 +196,12 @@ app.post("/confirm", async (req, res) => {
       product: {
         price: Number(String(priceNewRaw).replace(",", ".")) || 0,
         fields: [
-          {
-            custom_field_id: 32703, // ID del campo "Fecha" en Jumpseller
-            value: fechaParaEnviar
-          }
-        ]
+  {
+    id: 7411708, // ID del campo "Fecha" en este producto
+    value: fechaParaEnviar
+  }
+]
+
       }
     };
 
