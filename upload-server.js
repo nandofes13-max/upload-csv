@@ -179,7 +179,7 @@ try {
 
   const results = [];
 
- for (const item of payload) {
+ for (const item of payload) {for (const item of payload) {
   const { sku, price_new: priceNewRaw, date_new: dateNew, jumpseller_id: productId } = item;
 
   if (!productId) {
@@ -190,13 +190,13 @@ try {
   // Normalizar la fecha antes de enviar (por si viene como xx/xx/xxxx)
   const fechaParaEnviar = toDDMMYY(dateNew);
 
-  // --- CAMBIO AQUÍ: usar el id del campo existente para actualizarlo ---
+  // --- BODY para actualizar producto con custom_fields ---
   const body = {
     product: {
       price: Number(String(priceNewRaw).replace(",", ".")) || 0,
-      fields: [
+      custom_fields: [
         {
-          id: 7411708,  // id del campo existente "Fecha"
+          id: 32703,          // ID del campo "Fecha" que viste en el log
           value: fechaParaEnviar
         }
       ]
