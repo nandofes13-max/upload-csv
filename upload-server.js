@@ -16,6 +16,8 @@ const upload = multer({ dest: "uploads/" });
 // --- Helpers ---
 function toDDMMYY(raw) {
   if (raw === null || raw === undefined || raw === "") return "";
+
+  // Si viene como número (serial Excel)
   if (typeof raw === "number") {
     const date = new Date(Math.round((raw - 25569) * 86400 * 1000));
     const dd = String(date.getUTCDate()).padStart(2, "0");
@@ -23,12 +25,14 @@ function toDDMMYY(raw) {
     const yy = String(date.getUTCFullYear()).slice(-2);
     return `${dd}/${mm}/${yy}`;
   }
+
   if (raw instanceof Date) {
     const dd = String(raw.getDate()).padStart(2, "0");
     const mm = String(raw.getMonth() + 1).padStart(2, "0");
     const yy = String(raw.getFullYear()).slice(-2);
     return `${dd}/${mm}/${yy}`;
   }
+
   const s = String(raw).trim();
   const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
   if (m) {
@@ -37,31 +41,11 @@ function toDDMMYY(raw) {
     const yy = m[3].length === 4 ? m[3].slice(-2) : m[3];
     return `${dd}/${mm}/${yy}`;
   }
+
   return s;
 }
-function toPrecioString(raw) {
-  if (raw === null || raw === undefined || raw === "") return "";
-  let s = String(raw).trim().replace(/\s/g, "");
-  s = s.replace(";", "");
-  // 1.234,56 -> 1234.56
-  if (/^\d{1,3}(?:\.\d{3})*,\d{2}$/.test(s)) {
-    s = s.replace(/\./g, "").replace(",", ".");
-  }
-  // 65,89 -> 65.89
-  else if (/^\d+,\d{2}$/.test(s)) {
-    s = s.replace(",", ".");
-  }
-  // 65.89 -> 65.89
-  else if (/^\d+\.\d{2}$/.test(s)) {
-    // ok
-  }
-  // 999 -> 999
-  else if (/^\d+$/.test(s)) {
-    // ok
-  }
-  if (isNaN(Number(s))) return "";
-  return s;
-}
+
+// Crear cliente Jumpseller
 function createJumpsellerClient() {
   const login = process.env.JUMPS_LOGIN;
   const token = process.env.JUMPS_TOKEN;
@@ -72,6 +56,8 @@ function createJumpsellerClient() {
     timeout: 30_000,
   });
 }
+
+// Normalizar producto de respuesta Jumpseller
 function normalizeProductFromApi(obj) {
   const id = obj.id || obj.product_id || obj.product?.id || obj.id_product || null;
   const name = obj.name || obj.title || (obj.product && (obj.product.name || obj.product.title)) || "";
@@ -85,41 +71,48 @@ function normalizeProductFromApi(obj) {
 // ------------------
 app.post("/upload", upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No se subió archivo" });
+
   const filePath = req.file.path;
+
   try {
-    let rows;
-    if (filePath.endsWith('.csv')) {
-      const workbook = xlsx.readFile(filePath, { type: "file", raw: false, FS: ";" });
-      const sheetName = workbook.SheetNames[0];
-      const sheet = workbook.Sheets[sheetName];
-      rows = xlsx.utils.sheet_to_json(sheet, { defval: "" });
-    } else {
-      const workbook = xlsx.readFile(filePath);
-      const sheetName = workbook.SheetNames[0];
-      const sheet = workbook.Sheets[sheetName];
-      rows = xlsx.utils.sheet_to_json(sheet, { defval: "" });
-    }
+    const workbook = xlsx.readFile(filePath);
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const rows = xlsx.utils.sheet_to_json(sheet, { defval: "" });
+
     const jsClient = createJumpsellerClient();
     const preview = [];
-    for (const row of rows) {
-      // Las claves de columna se mantienen como están, en mayúsculas
-      const keys = {};
-      for (const k of Object.keys(row)) keys[k.trim()] = row[k];
-      const sku = keys["COD.INT"]?.toString().trim() || "";
-      const precioRaw = keys["PRECIO"] || "";
-      const precio = toPrecioString(precioRaw);
-      const fechaRaw = keys["FECHA"] || "";
-      const fecha = toDDMMYY(fechaRaw);
 
+    for (const row of rows) {
+      const keys = {};
+      for (const k of Object.keys(row)) keys[k.toLowerCase().trim()] = row[k];
+
+      const skuRaw = keys["cod.int"] ?? keys["cod int"] ?? keys["codint"] ?? keys["codigo"] ?? keys["codigo interno"] ?? keys["cod"];
+      const sku = skuRaw?.toString().trim() || "";
+      const precioRaw = keys["precio"] || keys["price"] || keys["importe"] || "";
+      const precio = precioRaw === "" ? "" : String(precioRaw).replace(/[^\d\.,-]/g, "").replace(",", ".");
+      const fechaRaw = keys["fecha"] || keys["fecha actualizacion"] || keys["fecha actualización"] || keys["fecha_modificacion"] || "";
+      const fecha = toDDMMYY(fechaRaw); // <-- normaliza a formato DD/MM/YY
+
+      // 🧠 VALIDACIONES COD.INT
       let errorCodInt = "";
-      if (!sku) errorCodInt = "Código vacío o ausente";
-      else if (sku === "0") errorCodInt = "Código igual a 0";
-      else if (!/^[A-Za-z0-9\-_]+$/.test(sku)) errorCodInt = "Contiene caracteres inválidos";
-      else if (sku.length < 3) errorCodInt = "Código demasiado corto";
-      else if (sku.length > 30) errorCodInt = "Código demasiado largo";
+
+      if (!sku) {
+        errorCodInt = "Código vacío o ausente";
+      } else if (sku === "0") {
+        errorCodInt = "Código igual a 0";
+      } else if (!/^[A-Za-z0-9\-_]+$/.test(sku)) {
+        errorCodInt = "Contiene caracteres inválidos";
+      } else if (sku.length < 3) {
+        errorCodInt = "Código demasiado corto";
+      } else if (sku.length > 30) {
+        errorCodInt = "Código demasiado largo";
+      }
 
       let apiProduct = null;
       let apiStatus = null;
+
+      // Si hay error en COD.INT, no busca en Jumpseller
       if (!errorCodInt) {
         try {
           const resp = await jsClient.get(`/products/search.json`, { params: { query: sku } });
@@ -140,16 +133,18 @@ app.post("/upload", upload.single("file"), async (req, res) => {
           errorCodInt = "Error consultando Jumpseller";
         }
       }
+
       preview.push({
         product_name: apiProduct?.name || "(no encontrado)",
-        cod_int: sku,
-        precio: precio,
-        fecha: fecha,
+        sku,
+        price_new: precio,
+        date_new: fecha,
         jumpseller_id: apiProduct?.id || null,
         api_status: apiStatus || null,
-        error_cod_int: errorCodInt,
+        error_cod_int: errorCodInt, // <-- NUEVA COLUMNA
       });
     }
+
     fs.unlinkSync(filePath);
     return res.json({ preview });
   } catch (error) {
@@ -166,15 +161,19 @@ app.post("/confirm", async (req, res) => {
   const payload = req.body?.data;
   if (!Array.isArray(payload) || payload.length === 0)
     return res.status(400).json({ error: "No hay datos para actualizar" });
+
   const jsClient = createJumpsellerClient();
+
   const results = [];
+
   for (const item of payload) {
     const {
-      cod_int: sku,
-      precio: priceNewRaw,
-      fecha: dateNew,
+      sku,
+      price_new: priceNewRaw,
+      date_new: dateNew,
       jumpseller_id: productId,
     } = item;
+
     if (!productId) {
       results.push({
         sku,
@@ -183,9 +182,11 @@ app.post("/confirm", async (req, res) => {
       });
       continue;
     }
-    const fechaParaEnviar = toDDMMYY(dateNew);
-    const precioParaEnviar = toPrecioString(priceNewRaw);
 
+    // Normalizar la fecha antes de enviar (por si viene como xx/xx/xxxx)
+    const fechaParaEnviar = toDDMMYY(dateNew);
+
+    // Obtener el id del campo "Fecha" para ese producto
     let fieldId = null;
     let productBefore = null;
     try {
@@ -209,18 +210,23 @@ app.post("/confirm", async (req, res) => {
       );
     }
 
+    // --- LOG ANTES DE ACTUALIZAR ---
+    console.log(`--- Producto antes de actualización: ID ${productId} ---`);
+    console.log(JSON.stringify(productBefore, null, 2));
+    console.log("-------------------------------");
+
     // Actualizar precio si corresponde
     let priceOk = true;
     let priceResp = null;
     if (
-      precioParaEnviar !== undefined &&
-      precioParaEnviar !== null &&
-      precioParaEnviar !== ""
+      priceNewRaw !== undefined &&
+      priceNewRaw !== null &&
+      priceNewRaw !== ""
     ) {
       try {
         const priceBody = {
           product: {
-            price: Number(precioParaEnviar) || 0,
+            price: Number(String(priceNewRaw).replace(",", ".")) || 0,
           },
         };
         priceResp = await jsClient.put(
@@ -239,7 +245,7 @@ app.post("/confirm", async (req, res) => {
       }
     }
 
-    // Actualizar el campo personalizado usando el endpoint correcto
+    // --- Actualizar el campo personalizado usando el endpoint correcto ---
     let fechaOk = true;
     let fechaResp = null;
     if (fieldId && fechaParaEnviar) {
@@ -251,6 +257,12 @@ app.post("/confirm", async (req, res) => {
           `/products/${productId}/fields/${fieldId}.json`,
           fieldBody
         );
+        // LOG después de actualizar campo personalizado
+        console.log(
+          `--- PUT campo personalizado Fecha: Producto ID ${productId} / Field ID ${fieldId} ---`
+        );
+        console.log(JSON.stringify(fechaResp.data, null, 2));
+        console.log("-------------------------------");
       } catch (err) {
         fechaOk = false;
         console.error(
@@ -276,6 +288,7 @@ app.post("/confirm", async (req, res) => {
       data: { price: priceResp?.data, fecha: fechaResp?.data },
     });
   }
+
   return res.json({ results });
 });
 
