@@ -1,4 +1,3 @@
-// upload-server.js
 const express = require("express");
 const multer = require("multer");
 const path = require("path");
@@ -160,24 +159,34 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 // ------------------
 app.post("/confirm", async (req, res) => {
   const payload = req.body?.data;
-  if (!Array.isArray(payload) || payload.length === 0) return res.status(400).json({ error: "No hay datos para actualizar" });
+  if (!Array.isArray(payload) || payload.length === 0)
+    return res.status(400).json({ error: "No hay datos para actualizar" });
 
   const jsClient = createJumpsellerClient();
 
   const results = [];
 
   for (const item of payload) {
-    const { sku, price_new: priceNewRaw, date_new: dateNew, jumpseller_id: productId } = item;
+    const {
+      sku,
+      price_new: priceNewRaw,
+      date_new: dateNew,
+      jumpseller_id: productId,
+    } = item;
 
     if (!productId) {
-      results.push({ sku, ok: false, message: "Producto no encontrado en Jumpseller (no se actualiza)" });
+      results.push({
+        sku,
+        ok: false,
+        message: "Producto no encontrado en Jumpseller (no se actualiza)",
+      });
       continue;
     }
 
     // Normalizar la fecha antes de enviar (por si viene como xx/xx/xxxx)
     const fechaParaEnviar = toDDMMYY(dateNew);
 
-    // --- NUEVO: obtener el id del campo "Fecha" para ese producto ---
+    // Obtener el id del campo "Fecha" para ese producto
     let fieldId = null;
     let productBefore = null;
     try {
@@ -194,54 +203,90 @@ app.post("/confirm", async (req, res) => {
       );
       if (fieldFecha) fieldId = fieldFecha.id;
     } catch (err) {
-      console.error(`No se pudo obtener el campo "Fecha" para producto ${productId}:`, err?.response?.status, err?.message);
+      console.error(
+        `No se pudo obtener el campo "Fecha" para producto ${productId}:`,
+        err?.response?.status,
+        err?.message
+      );
     }
 
     // --- LOG ANTES DE ACTUALIZAR ---
     console.log(`--- Producto antes de actualización: ID ${productId} ---`);
     console.log(JSON.stringify(productBefore, null, 2));
-    console.log('-------------------------------');
+    console.log("-------------------------------");
 
-    // --- CAMBIO AQUÍ: usar el id del campo existente para actualizarlo, si existe ---
-    const fieldObj = fieldId
-      ? { id: fieldId, custom_field_id: 32703, value: fechaParaEnviar }
-      : { custom_field_id: 32703, value: fechaParaEnviar };
-
-    const body = {
-      product: {
-        price: Number(String(priceNewRaw).replace(",", ".")) || 0,
-        fields: [fieldObj],
-      },
-    };
-
-    console.log(
-      `PUT → SKU ${sku} | ID ${productId} | Fecha enviada: ${fechaParaEnviar} | field_id: ${fieldId || "nuevo"}`
-    );
-
-    try {
-      const resp = await jsClient.put(`/products/${productId}.json`, body);
-
-      // --- LOG DESPUÉS DE ACTUALIZAR ---
-      console.log(`--- Producto después de actualización: ID ${productId} ---`);
-      console.log(JSON.stringify(resp.data, null, 2));
-      console.log('-------------------------------');
-
-      results.push({ sku, ok: true, status: resp.status, data: resp.data });
-    } catch (err) {
-      console.error(
-        "Error actualizando producto:",
-        sku,
-        productId,
-        err?.response?.status,
-        err?.response?.data || err?.message
-      );
-      results.push({
-        sku,
-        ok: false,
-        status: err?.response?.status || null,
-        message: err?.response?.data || err?.message,
-      });
+    // Actualizar precio si corresponde
+    let priceOk = true;
+    let priceResp = null;
+    if (
+      priceNewRaw !== undefined &&
+      priceNewRaw !== null &&
+      priceNewRaw !== ""
+    ) {
+      try {
+        const priceBody = {
+          product: {
+            price: Number(String(priceNewRaw).replace(",", ".")) || 0,
+          },
+        };
+        priceResp = await jsClient.put(
+          `/products/${productId}.json`,
+          priceBody
+        );
+      } catch (err) {
+        priceOk = false;
+        console.error(
+          "Error actualizando precio:",
+          sku,
+          productId,
+          err?.response?.status,
+          err?.response?.data || err?.message
+        );
+      }
     }
+
+    // --- Actualizar el campo personalizado usando el endpoint correcto ---
+    let fechaOk = true;
+    let fechaResp = null;
+    if (fieldId && fechaParaEnviar) {
+      try {
+        const fieldBody = {
+          field: { value: fechaParaEnviar },
+        };
+        fechaResp = await jsClient.put(
+          `/products/${productId}/fields/${fieldId}.json`,
+          fieldBody
+        );
+        // LOG después de actualizar campo personalizado
+        console.log(
+          `--- PUT campo personalizado Fecha: Producto ID ${productId} / Field ID ${fieldId} ---`
+        );
+        console.log(JSON.stringify(fechaResp.data, null, 2));
+        console.log("-------------------------------");
+      } catch (err) {
+        fechaOk = false;
+        console.error(
+          "Error actualizando campo Fecha:",
+          sku,
+          productId,
+          fieldId,
+          err?.response?.status,
+          err?.response?.data || err?.message
+        );
+      }
+    } else if (!fieldId && fechaParaEnviar) {
+      fechaOk = false;
+      console.error(
+        `No se encontró el fieldId para el campo Fecha en el producto ${productId}`
+      );
+    }
+
+    results.push({
+      sku,
+      ok: priceOk && fechaOk,
+      status: { price: priceResp?.status, fecha: fechaResp?.status },
+      data: { price: priceResp?.data, fecha: fechaResp?.data },
+    });
   }
 
   return res.json({ results });
@@ -253,4 +298,6 @@ app.get("/", (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor escuchando en el puerto ${PORT}`));
+app.listen(PORT, () =>
+  console.log(`Servidor escuchando en el puerto ${PORT}`)
+);
