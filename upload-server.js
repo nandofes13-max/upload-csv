@@ -45,6 +45,24 @@ function toDDMMYY(raw) {
   return s;
 }
 
+// --- Normaliza el precio a string punto decimal ---
+function toPrecioString(raw) {
+  if (raw === null || raw === undefined || raw === "") return "";
+  let s = String(raw).trim().replace(/\s/g, "");
+  // 1.234,56 -> 1234.56
+  if (/^\d{1,3}(?:\.\d{3})*,\d{2}$/.test(s)) {
+    s = s.replace(/\./g, "").replace(",", ".");
+  } else if (/^\d+,\d{2}$/.test(s)) {
+    // 65,89 -> 65.89
+    s = s.replace(",", ".");
+  } else if (/^\d+\.\d{2}$/.test(s)) {
+    // 65.89 -> 65.89 (ok)
+  } else if (/^\d+$/.test(s)) {
+    // 65 -> 65 (ok)
+  }
+  return s;
+}
+
 // Crear cliente Jumpseller
 function createJumpsellerClient() {
   const login = process.env.JUMPS_LOGIN;
@@ -90,7 +108,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       const skuRaw = keys["cod.int"] ?? keys["cod int"] ?? keys["codint"] ?? keys["codigo"] ?? keys["codigo interno"] ?? keys["cod"];
       const sku = skuRaw?.toString().trim() || "";
       const precioRaw = keys["precio"] || keys["price"] || keys["importe"] || "";
-      const precio = precioRaw === "" ? "" : String(precioRaw).replace(/[^\d\.,-]/g, "").replace(",", ".");
+      const precio = toPrecioString(precioRaw); // <-- Usa el helper de normalización
       const fechaRaw = keys["fecha"] || keys["fecha actualizacion"] || keys["fecha actualización"] || keys["fecha_modificacion"] || "";
       const fecha = toDDMMYY(fechaRaw); // <-- normaliza a formato DD/MM/YY
 
@@ -226,7 +244,7 @@ app.post("/confirm", async (req, res) => {
       try {
         const priceBody = {
           product: {
-            price: Number(String(priceNewRaw).replace(",", ".")) || 0,
+            price: Number(toPrecioString(priceNewRaw)) || 0, // <-- usa el helper aquí también
           },
         };
         priceResp = await jsClient.put(
