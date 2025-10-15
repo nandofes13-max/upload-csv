@@ -45,12 +45,12 @@ function toDDMMYY(raw) {
   return s;
 }
 
-// --- Normaliza el precio a string punto decimal ---
+// --- Normaliza el precio de forma segura ---
 function toPrecioString(raw) {
   if (raw === null || raw === undefined || raw === "") return "";
   let s = String(raw).trim().replace(/\s/g, "");
+  s = s.replace(";", "");
 
-  // Si el valor es uno de los formatos clásicos:
   // 1.234,56 -> 1234.56
   if (/^\d{1,3}(?:\.\d{3})*,\d{2}$/.test(s)) {
     s = s.replace(/\./g, "").replace(",", ".");
@@ -63,14 +63,12 @@ function toPrecioString(raw) {
   else if (/^\d+\.\d{2}$/.test(s)) {
     // ok
   }
-  // 999 -> 999.00
+  // 999 -> 999 (ok, lo dejamos igual para que la API de Jumpseller lo convierta si hace falta)
   else if (/^\d+$/.test(s)) {
-    s = `${s}.00`;
+    // ok
   }
-  // Si viene con punto y coma como parte del precio por error, lo quitamos
-  s = s.replace(";", "");
 
-  // Si aún no es un número válido, lo dejamos vacío para evitar errores
+  // Si no es un número válido, lo dejamos vacío
   if (isNaN(Number(s))) return "";
 
   return s;
@@ -264,7 +262,7 @@ app.post("/confirm", async (req, res) => {
       try {
         const priceBody = {
           product: {
-            price: Number(precioParaEnviar) || 0, // <-- usa el helper aquí también
+            price: Number(precioParaEnviar) || 0,
           },
         };
         priceResp = await jsClient.put(
