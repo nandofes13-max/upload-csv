@@ -49,17 +49,30 @@ function toDDMMYY(raw) {
 function toPrecioString(raw) {
   if (raw === null || raw === undefined || raw === "") return "";
   let s = String(raw).trim().replace(/\s/g, "");
+
+  // Si el valor es uno de los formatos clásicos:
   // 1.234,56 -> 1234.56
   if (/^\d{1,3}(?:\.\d{3})*,\d{2}$/.test(s)) {
     s = s.replace(/\./g, "").replace(",", ".");
-  } else if (/^\d+,\d{2}$/.test(s)) {
-    // 65,89 -> 65.89
-    s = s.replace(",", ".");
-  } else if (/^\d+\.\d{2}$/.test(s)) {
-    // 65.89 -> 65.89 (ok)
-  } else if (/^\d+$/.test(s)) {
-    // 65 -> 65 (ok)
   }
+  // 65,89 -> 65.89
+  else if (/^\d+,\d{2}$/.test(s)) {
+    s = s.replace(",", ".");
+  }
+  // 65.89 -> 65.89 (ok)
+  else if (/^\d+\.\d{2}$/.test(s)) {
+    // ok
+  }
+  // 999 -> 999.00
+  else if (/^\d+$/.test(s)) {
+    s = `${s}.00`;
+  }
+  // Si viene con punto y coma como parte del precio por error, lo quitamos
+  s = s.replace(";", "");
+
+  // Si aún no es un número válido, lo dejamos vacío para evitar errores
+  if (isNaN(Number(s))) return "";
+
   return s;
 }
 
@@ -93,10 +106,19 @@ app.post("/upload", upload.single("file"), async (req, res) => {
   const filePath = req.file.path;
 
   try {
-    const workbook = xlsx.readFile(filePath);
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    const rows = xlsx.utils.sheet_to_json(sheet, { defval: "" });
+    let rows;
+    // Si el archivo es CSV (no xlsx), usamos delimitador explícito
+    if (filePath.endsWith('.csv')) {
+      const workbook = xlsx.readFile(filePath, { type: "file", raw: false, FS: ";" });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      rows = xlsx.utils.sheet_to_json(sheet, { defval: "" });
+    } else {
+      const workbook = xlsx.readFile(filePath);
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      rows = xlsx.utils.sheet_to_json(sheet, { defval: "" });
+    }
 
     const jsClient = createJumpsellerClient();
     const preview = [];
@@ -159,7 +181,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
         date_new: fecha,
         jumpseller_id: apiProduct?.id || null,
         api_status: apiStatus || null,
-        error_cod_int: errorCodInt, // <-- NUEVA COLUMNA
+        error_cod_int: errorCodInt,
       });
     }
 
@@ -201,10 +223,9 @@ app.post("/confirm", async (req, res) => {
       continue;
     }
 
-    // Normalizar la fecha antes de enviar (por si viene como xx/xx/xxxx)
     const fechaParaEnviar = toDDMMYY(dateNew);
+    const precioParaEnviar = toPrecioString(priceNewRaw);
 
-    // Obtener el id del campo "Fecha" para ese producto
     let fieldId = null;
     let productBefore = null;
     try {
@@ -228,7 +249,6 @@ app.post("/confirm", async (req, res) => {
       );
     }
 
-    // --- LOG ANTES DE ACTUALIZAR ---
     console.log(`--- Producto antes de actualización: ID ${productId} ---`);
     console.log(JSON.stringify(productBefore, null, 2));
     console.log("-------------------------------");
@@ -237,14 +257,14 @@ app.post("/confirm", async (req, res) => {
     let priceOk = true;
     let priceResp = null;
     if (
-      priceNewRaw !== undefined &&
-      priceNewRaw !== null &&
-      priceNewRaw !== ""
+      precioParaEnviar !== undefined &&
+      precioParaEnviar !== null &&
+      precioParaEnviar !== ""
     ) {
       try {
         const priceBody = {
           product: {
-            price: Number(toPrecioString(priceNewRaw)) || 0, // <-- usa el helper aquí también
+            price: Number(precioParaEnviar) || 0, // <-- usa el helper aquí también
           },
         };
         priceResp = await jsClient.put(
@@ -275,7 +295,6 @@ app.post("/confirm", async (req, res) => {
           `/products/${productId}/fields/${fieldId}.json`,
           fieldBody
         );
-        // LOG después de actualizar campo personalizado
         console.log(
           `--- PUT campo personalizado Fecha: Producto ID ${productId} / Field ID ${fieldId} ---`
         );
