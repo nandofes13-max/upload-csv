@@ -112,13 +112,13 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       let apiProduct = null;
       let apiStatus = null;
 
-     if (!errorCodInt) {
+    if (!errorCodInt) {
   try {
     const resp = await jsClient.get(`/products/search.json`, { params: { query: sku } });
     apiStatus = resp.status;
     const data = resp.data;
 
-    // Unificamos en un array todos los posibles resultados
+    // Convertimos la respuesta en array plano
     let results = [];
     if (Array.isArray(data)) results = data;
     else if (data?.products?.length) results = data.products;
@@ -127,17 +127,28 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       results = Object.values(data).flat().filter(Boolean);
     }
 
-    // Filtrar solo coincidencias exactas de SKU
-    const exact = results.find(
-      (p) => String(p.sku).trim() === String(sku).trim()
+    // Intentamos coincidencia exacta de SKU
+    let exact = results.find(
+      (p) => String(p.sku).trim().toLowerCase() === String(sku).trim().toLowerCase()
     );
+
+    // 🔍 Si no hay coincidencia directa, probamos buscar por coincidencia exacta dentro de "variants" (aunque vos digas que no hay, Jumpseller puede envolver productos simples como variante única)
+    if (!exact) {
+      exact = results.find((p) => {
+        const variants = Array.isArray(p.variants) ? p.variants : [];
+        return variants.some(
+          (v) => String(v.sku).trim().toLowerCase() === String(sku).trim().toLowerCase()
+        );
+      });
+    }
 
     if (exact) {
       apiProduct = normalizeProductFromApi(exact);
     } else {
-      errorCodInt = results.length
-        ? "SKU no coincide exactamente"
-        : "No encontrado en Jumpseller";
+      errorCodInt =
+        results.length > 0
+          ? "No hay coincidencia exacta de SKU en los resultados"
+          : "No encontrado en Jumpseller";
     }
   } catch (err) {
     console.error(
