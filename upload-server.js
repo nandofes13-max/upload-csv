@@ -112,51 +112,41 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       let apiProduct = null;
       let apiStatus = null;
 
-    if (!errorCodInt) {
+   if (!errorCodInt) {
   try {
-    const resp = await jsClient.get(`/products/search.json`, { params: { query: sku } });
+    const resp = await jsClient.get(`/products/search.json`, {
+      params: { query: sku },
+    });
     apiStatus = resp.status;
     const data = resp.data;
 
-    // Convertimos la respuesta en array plano
-    let results = [];
-    if (Array.isArray(data)) results = data;
-    else if (data?.products?.length) results = data.products;
-    else if (data?.product) results = [data.product];
+    // 🔎 Buscar coincidencia exacta de SKU
+    let allProducts = [];
+
+    if (Array.isArray(data)) allProducts = data;
+    else if (data?.products?.length) allProducts = data.products;
+    else if (data?.product) allProducts = [data.product];
     else if (data && typeof data === "object") {
-      results = Object.values(data).flat().filter(Boolean);
+      const arr = Object.values(data).flat().filter(Boolean);
+      if (arr.length) allProducts = arr;
     }
 
-    // Intentamos coincidencia exacta de SKU
-    let exact = results.find(
-      (p) => String(p.sku).trim().toLowerCase() === String(sku).trim().toLowerCase()
-    );
+    const exactMatch = allProducts.find((p) => {
+      const skuApi =
+        p.sku ||
+        p.sku_code ||
+        (p.variants && p.variants[0]?.sku) ||
+        "";
+      return String(skuApi).trim().toLowerCase() === String(sku).trim().toLowerCase();
+    });
 
-    // 🔍 Si no hay coincidencia directa, probamos buscar por coincidencia exacta dentro de "variants" (aunque vos digas que no hay, Jumpseller puede envolver productos simples como variante única)
-    if (!exact) {
-      exact = results.find((p) => {
-        const variants = Array.isArray(p.variants) ? p.variants : [];
-        return variants.some(
-          (v) => String(v.sku).trim().toLowerCase() === String(sku).trim().toLowerCase()
-        );
-      });
-    }
-
-    if (exact) {
-      apiProduct = normalizeProductFromApi(exact);
+    if (exactMatch) {
+      apiProduct = normalizeProductFromApi(exactMatch);
     } else {
-      errorCodInt =
-        results.length > 0
-          ? "No hay coincidencia exacta de SKU en los resultados"
-          : "No encontrado en Jumpseller";
+      errorCodInt = "No encontrado (sin coincidencia exacta)";
     }
   } catch (err) {
-    console.error(
-      "Error buscando SKU en Jumpseller:",
-      sku,
-      err?.response?.status,
-      err?.message
-    );
+    console.error("Error buscando SKU en Jumpseller:", sku, err?.response?.status, err?.message);
     errorCodInt = "Error consultando Jumpseller";
   }
 }
