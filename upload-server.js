@@ -112,27 +112,43 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       let apiProduct = null;
       let apiStatus = null;
 
-      // Si hay error en COD.INT, no busca en Jumpseller
-      if (!errorCodInt) {
-        try {
-          const resp = await jsClient.get(`/products/search.json`, { params: { query: sku } });
-          apiStatus = resp.status;
-          const data = resp.data;
-          let found = null;
-          if (Array.isArray(data) && data.length) found = data[0];
-          else if (data?.products?.length) found = data.products[0];
-          else if (data?.product) found = data.product;
-          else if (data && typeof data === "object") {
-            const arr = Object.values(data).flat().filter(Boolean);
-            if (arr.length) found = arr[0];
-          }
-          if (found) apiProduct = normalizeProductFromApi(found);
-          else errorCodInt = "No encontrado en Jumpseller";
-        } catch (err) {
-          console.error("Error buscando SKU en Jumpseller:", sku, err?.response?.status, err?.message);
-          errorCodInt = "Error consultando Jumpseller";
-        }
-      }
+     if (!errorCodInt) {
+  try {
+    const resp = await jsClient.get(`/products/search.json`, { params: { query: sku } });
+    apiStatus = resp.status;
+    const data = resp.data;
+
+    // Unificamos en un array todos los posibles resultados
+    let results = [];
+    if (Array.isArray(data)) results = data;
+    else if (data?.products?.length) results = data.products;
+    else if (data?.product) results = [data.product];
+    else if (data && typeof data === "object") {
+      results = Object.values(data).flat().filter(Boolean);
+    }
+
+    // Filtrar solo coincidencias exactas de SKU
+    const exact = results.find(
+      (p) => String(p.sku).trim() === String(sku).trim()
+    );
+
+    if (exact) {
+      apiProduct = normalizeProductFromApi(exact);
+    } else {
+      errorCodInt = results.length
+        ? "SKU no coincide exactamente"
+        : "No encontrado en Jumpseller";
+    }
+  } catch (err) {
+    console.error(
+      "Error buscando SKU en Jumpseller:",
+      sku,
+      err?.response?.status,
+      err?.message
+    );
+    errorCodInt = "Error consultando Jumpseller";
+  }
+}
 
       preview.push({
         product_name: apiProduct?.name || "(no encontrado)",
