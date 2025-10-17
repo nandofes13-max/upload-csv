@@ -65,20 +65,43 @@ function normalizeProductFromApi(obj) {
   return { id, name, sku, price };
 }
 
-// --- NUEVA FUNCIÓN: búsqueda exacta usando search.json y listado de resultados ---
-async function findProductByExactSKU(jsClient, sku) {
+// 🔍 Nueva versión temporal de findProductBySKU con logs para ver los resultados
+async function findProductBySKU(sku, token, store) {
   try {
-    if (!sku || typeof sku !== "string" || sku.trim() === "") return null;
+    const response = await axios.get(
+      `https://${store}.jumpseller.com/api/products/search.json?query=${sku}&limit=100`,
+      {
+        headers: {
+          Authorization: `Basic ${token}`,
+        },
+      }
+    );
 
-    const resp = await jsClient.get(`/search.json`, { params: { q: sku } });
-    const products = resp.data?.products || [];
+    const products = response.data || [];
 
-    console.log(`🔍 Resultados devueltos por search.json para "${sku}" (${products.length} encontrados):`);
-    products.slice(0, 100).forEach((p, i) => {
-      console.log(
-        `${String(i + 1).padStart(2, "0")}. ID: ${p.id} | SKU: ${p.sku} | Nombre: ${p.name}`
-      );
+    console.log(`\n=== 🔍 RESULTADOS SEARCH.JSON para SKU buscado: ${sku} ===`);
+    products.forEach((p, i) => {
+      console.log(`${i + 1}. ID: ${p.id} | SKU: ${p.sku} | Nombre: ${p.name}`);
     });
+    console.log(`=== Fin de resultados (${products.length}) ===\n`);
+
+    // Buscar coincidencia exacta de SKU
+    const exactMatch = products.find(
+      (p) => String(p.sku).trim() === String(sku).trim()
+    );
+
+    if (exactMatch) {
+      console.log(`✅ Coincidencia exacta encontrada para SKU ${sku}: ID ${exactMatch.id}`);
+      return exactMatch;
+    } else {
+      console.log(`❌ No se encontró coincidencia exacta para SKU ${sku}`);
+      return null;
+    }
+  } catch (error) {
+    console.error(`Error buscando producto con SKU ${sku}:`, error.message);
+    return null;
+  }
+}
 
     const exactMatch = products.find((p) => {
       const productSku = String(p.sku || "").trim().toLowerCase();
