@@ -13,6 +13,7 @@ app.use(express.static(path.join(process.cwd(), "public")));
 
 const upload = multer({ dest: "uploads/" });
 
+// --- Helpers ---
 function toDDMMYY(raw) {
   if (raw === null || raw === undefined || raw === "") return "";
 
@@ -25,27 +26,25 @@ function toDDMMYY(raw) {
     return `${dd}/${mm}/${yy}`;
   }
 
+  if (raw instanceof Date) {
+    const dd = String(raw.getDate()).padStart(2, "0");
+    const mm = String(raw.getMonth() + 1).padStart(2, "0");
+    const yy = String(raw.getFullYear()).slice(-2);
+    return `${dd}/${mm}/${yy}`;
+  }
+
   const s = String(raw).trim();
-  
-  // ✅ SOLUCIÓN: Convertir MM/DD/YY a DD/MM/YY (problema LibreOffice)
   const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
   if (m) {
-    const part1 = m[1]; // Mes o día
-    const part2 = m[2]; // Día o mes
-    const part3 = m[3].length === 4 ? m[3].slice(-2) : m[3]; // Año
-    
-    // Si part1 <= 12 y part2 > 12, es MM/DD/YY - intercambiar
-    if (parseInt(part1) <= 12 && parseInt(part2) > 12) {
-      return `${part2.padStart(2, "0")}/${part1.padStart(2, "0")}/${part3}`;
-    }
-    // Caso contrario, mantener como está (DD/MM/YY)
-    else {
-      return `${part1.padStart(2, "0")}/${part2.padStart(2, "0")}/${part3}`;
-    }
+    const dd = m[1].padStart(2, "0");
+    const mm = m[2].padStart(2, "0");
+    const yy = m[3].length === 4 ? m[3].slice(-2) : m[3];
+    return `${dd}/${mm}/${yy}`;
   }
 
   return s;
 }
+
 // Crear cliente Jumpseller
 function createJumpsellerClient() {
   const login = process.env.JUMPS_LOGIN;
