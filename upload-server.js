@@ -17,6 +17,7 @@ const upload = multer({ dest: "uploads/" });
 function toDDMMYY(raw) {
   if (raw === null || raw === undefined || raw === "") return "";
 
+  // Si viene como número (serial Excel)
   if (typeof raw === "number") {
     const date = new Date(Math.round((raw - 25569) * 86400 * 1000));
     const dd = String(date.getUTCDate()).padStart(2, "0");
@@ -65,45 +66,6 @@ function normalizeProductFromApi(obj) {
   return { id, name, sku, price };
 }
 
-// 🔍 Búsqueda de producto por SKU con coincidencia exacta
-async function findProductByExactSKU(jsClient, sku) {
-  console.log(`🔍 Buscando productos para SKU "${sku}"...`);
-
-  try {
-    // Obtenemos los productos desde search.json
-    const response = await jsClient.get(`/products/search.json?query=${sku}&limit=100`);
-    const products = response.data.products || [];
-
-    console.log(`📦 Se obtuvieron ${products.length} productos del search.json para "${sku}"`);
-    products.forEach((p, i) => {
-      console.log(`${i + 1}. ID: ${p.id} | SKU: ${p.sku} | Nombre: ${p.name}`);
-    });
-
-    // Buscar coincidencia exacta de SKU
-    const exactMatch = products.find(p => {
-      const productSku = String(p.sku || "").trim().toLowerCase();
-      const excelSku = String(sku).trim().toLowerCase();
-      return productSku === excelSku;
-    });
-
-    if (exactMatch) {
-      console.log(`✅ Coincidencia exacta encontrada para SKU "${sku}" → ID ${exactMatch.id}`);
-      return {
-        id: exactMatch.id,
-        name: exactMatch.name,
-        sku: exactMatch.sku,
-        price: exactMatch.price
-      };
-    } else {
-      console.log(`⚠️ No se encontró coincidencia exacta para SKU "${sku}"`);
-      return null;
-    }
-  } catch (error) {
-    console.error(`❌ Error al buscar SKU "${sku}":`, error.message);
-    return null;
-  }
-}
-
 // ------------------
 // RUTA: subida y previsualización
 // ------------------
@@ -130,8 +92,9 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       const precioRaw = keys["precio"] || keys["price"] || keys["importe"] || "";
       const precio = precioRaw === "" ? "" : String(precioRaw).replace(/[^\d\.,-]/g, "").replace(",", ".");
       const fechaRaw = keys["fecha"] || keys["fecha actualizacion"] || keys["fecha actualización"] || keys["fecha_modificacion"] || "";
-      const fecha = toDDMMYY(fechaRaw);
+      const fecha = toDDMMYY(fechaRaw); // <-- normaliza a formato DD/MM/YY
 
+      // 🧠 VALIDACIONES COD.INT
       let errorCodInt = "";
 
       if (!sku) {
@@ -140,14 +103,35 @@ app.post("/upload", upload.single("file"), async (req, res) => {
         errorCodInt = "Código igual a 0";
       } else if (!/^[A-Za-z0-9\-_]+$/.test(sku)) {
         errorCodInt = "Contiene caracteres inválidos";
-      } else if (sku.length < 1) {
+      } else if (sku.length < 3) {
         errorCodInt = "Código demasiado corto";
+      } else if (sku.length > 30) {
+        errorCodInt = "Código demasiado largo";
       }
 
       let apiProduct = null;
+      let apiStatus = null;
+
+      // Si hay error en COD.INT, no busca en Jumpseller
       if (!errorCodInt) {
-        apiProduct = await findProductByExactSKU(jsClient, sku);
-        if (!apiProduct) errorCodInt = "No encontrado en Jumpseller";
+        try {
+          const resp = await jsClient.get(`/products/search.json`, { params: { query: sku } });
+          apiStatus = resp.status;
+          const data = resp.data;
+          let found = null;
+          if (Array.isArray(data) && data.length) found = data[0];
+          else if (data?.products?.length) found = data.products[0];
+          else if (data?.product) found = data.product;
+          else if (data && typeof data === "object") {
+            const arr = Object.values(data).flat().filter(Boolean);
+            if (arr.length) found = arr[0];
+          }
+          if (found) apiProduct = normalizeProductFromApi(found);
+          else errorCodInt = "No encontrado en Jumpseller";
+        } catch (err) {
+          console.error("Error buscando SKU en Jumpseller:", sku, err?.response?.status, err?.message);
+          errorCodInt = "Error consultando Jumpseller";
+        }
       }
 
       preview.push({
@@ -156,8 +140,8 @@ app.post("/upload", upload.single("file"), async (req, res) => {
         price_new: precio,
         date_new: fecha,
         jumpseller_id: apiProduct?.id || null,
-        api_status: apiProduct ? 200 : null,
-        error_cod_int: errorCodInt,
+        api_status: apiStatus || null,
+        error_cod_int: errorCodInt, // <-- NUEVA COLUMNA
       });
     }
 
@@ -179,6 +163,7 @@ app.post("/confirm", async (req, res) => {
     return res.status(400).json({ error: "No hay datos para actualizar" });
 
   const jsClient = createJumpsellerClient();
+
   const results = [];
 
   for (const item of payload) {
@@ -198,8 +183,10 @@ app.post("/confirm", async (req, res) => {
       continue;
     }
 
+    // Normalizar la fecha antes de enviar (por si viene como xx/xx/xxxx)
     const fechaParaEnviar = toDDMMYY(dateNew);
 
+    // Obtener el id del campo "Fecha" para ese producto
     let fieldId = null;
     let productBefore = null;
     try {
@@ -223,13 +210,19 @@ app.post("/confirm", async (req, res) => {
       );
     }
 
+    // --- LOG ANTES DE ACTUALIZAR ---
     console.log(`--- Producto antes de actualización: ID ${productId} ---`);
     console.log(JSON.stringify(productBefore, null, 2));
     console.log("-------------------------------");
 
+    // Actualizar precio si corresponde
     let priceOk = true;
     let priceResp = null;
-    if (priceNewRaw !== undefined && priceNewRaw !== null && priceNewRaw !== "") {
+    if (
+      priceNewRaw !== undefined &&
+      priceNewRaw !== null &&
+      priceNewRaw !== ""
+    ) {
       try {
         const priceBody = {
           product: {
@@ -252,15 +245,19 @@ app.post("/confirm", async (req, res) => {
       }
     }
 
+    // --- Actualizar el campo personalizado usando el endpoint correcto ---
     let fechaOk = true;
     let fechaResp = null;
     if (fieldId && fechaParaEnviar) {
       try {
-        const fieldBody = { field: { value: fechaParaEnviar } };
+        const fieldBody = {
+          field: { value: fechaParaEnviar },
+        };
         fechaResp = await jsClient.put(
           `/products/${productId}/fields/${fieldId}.json`,
           fieldBody
         );
+        // LOG después de actualizar campo personalizado
         console.log(
           `--- PUT campo personalizado Fecha: Producto ID ${productId} / Field ID ${fieldId} ---`
         );
@@ -295,6 +292,7 @@ app.post("/confirm", async (req, res) => {
   return res.json({ results });
 });
 
+// Servir index.html
 app.get("/", (req, res) => {
   res.sendFile(path.join(process.cwd(), "public", "index.html"));
 });
