@@ -92,7 +92,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       const precioRaw = keys["precio"] || keys["price"] || keys["importe"] || "";
       const precio = precioRaw === "" ? "" : String(precioRaw).replace(/[^\d\.,-]/g, "").replace(",", ".");
       const fechaRaw = keys["fecha"] || keys["fecha actualizacion"] || keys["fecha actualización"] || keys["fecha_modificacion"] || "";
-      const fecha = toDDMMYY(fechaRaw); // <-- normaliza a formato DD/MM/YY
+      const fecha = toDDMMYY(fechaRaw);
 
       // 🧠 VALIDACIONES COD.INT
       let errorCodInt = "";
@@ -119,15 +119,36 @@ app.post("/upload", upload.single("file"), async (req, res) => {
           apiStatus = resp.status;
           const data = resp.data;
           
+          // 🔍 DIAGNÓSTICO COMPLETO - SE ACTIVA AL SUBIR Y PREVISUALIZAR
+          console.log(`\n🔍 ===== BÚSQUEDA COMPLETA PARA COD.INT: "${sku}" =====`);
+          console.log(`📊 Total de resultados: ${Array.isArray(data) ? data.length : '0'}`);
+          
           let found = null;
           
-          // ✅ MODIFICACIÓN: Buscar coincidencia exacta de SKU en todos los resultados
-          if (Array.isArray(data) && data.length) {
-            // Buscar en TODOS los resultados el que tenga SKU exacto
+          if (Array.isArray(data) && data.length > 0) {
+            console.log(`📋 LISTA COMPLETA DE PRODUCTOS ENCONTRADOS:`);
+            data.forEach((product, index) => {
+              const productId = product.id || 'N/A';
+              const productSku = product.sku || (product.variants && product.variants[0]?.sku) || 'N/A';
+              const productName = product.name || 'Sin nombre';
+              
+              // Marcar si es el que buscamos
+              const isTarget = productSku === sku ? "🎯 ⬅️ BUSCADO" : "";
+              
+              console.log(`   ${index + 1}. ID: ${productId} | SKU: "${productSku}" | Producto: "${productName}" ${isTarget}`);
+            });
+            
+            // Buscar coincidencia exacta de SKU
             found = data.find(product => {
               const productSku = product.sku || (product.variants && product.variants[0]?.sku);
               return productSku === sku;
             });
+            
+            if (found) {
+              console.log(`🎯 ¡ENCONTRADO! Producto con SKU "${sku}": ${found.name} (ID: ${found.id})`);
+            } else {
+              console.log(`❌ No se encontró ningún producto con SKU exacto "${sku}" en los ${data.length} resultados`);
+            }
           } else if (data?.products?.length) {
             found = data.products.find(product => {
               const productSku = product.sku || (product.variants && product.variants[0]?.sku);
@@ -146,12 +167,12 @@ app.post("/upload", upload.single("file"), async (req, res) => {
             });
           }
           
+          console.log(`🔍 ===== FIN BÚSQUEDA PARA "${sku}" =====\n`);
+          
           if (found) {
             apiProduct = normalizeProductFromApi(found);
-            console.log(`✅ Encontrado producto exacto: ${apiProduct.name} (SKU: ${apiProduct.sku})`);
           } else {
             errorCodInt = "No encontrado en Jumpseller (SKU no coincide exactamente)";
-            console.log(`❌ No se encontró producto con SKU exacto: "${sku}"`);
           }
         } catch (err) {
           console.error("Error buscando SKU en Jumpseller:", sku, err?.response?.status, err?.message);
