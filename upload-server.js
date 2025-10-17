@@ -65,7 +65,7 @@ function normalizeProductFromApi(obj) {
   return { id, name, sku, price };
 }
 
-// 🔍 Búsqueda de producto por SKU con logs corregidos
+// 🔍 Búsqueda de producto por SKU con coincidencia exacta
 async function findProductByExactSKU(jsClient, sku) {
   console.log(`🔍 Buscando productos para SKU "${sku}"...`);
 
@@ -104,11 +104,10 @@ async function findProductByExactSKU(jsClient, sku) {
   }
 }
 
-
 // ------------------
 // RUTA: subida y previsualización
 // ------------------
-app.post("/upload", multer({ dest: "uploads/" }).single("file"), async (req, res) => {
+app.post("/upload", upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No se subió archivo" });
 
   const filePath = req.file.path;
@@ -180,7 +179,6 @@ app.post("/confirm", async (req, res) => {
     return res.status(400).json({ error: "No hay datos para actualizar" });
 
   const jsClient = createJumpsellerClient();
-
   const results = [];
 
   for (const item of payload) {
