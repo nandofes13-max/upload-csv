@@ -17,7 +17,6 @@ const upload = multer({ dest: "uploads/" });
 function toDDMMYY(raw) {
   if (raw === null || raw === undefined || raw === "") return "";
 
-  // Si viene como número (serial Excel)
   if (typeof raw === "number") {
     const date = new Date(Math.round((raw - 25569) * 86400 * 1000));
     const dd = String(date.getUTCDate()).padStart(2, "0");
@@ -66,6 +65,29 @@ function normalizeProductFromApi(obj) {
   return { id, name, sku, price };
 }
 
+// --- NUEVA FUNCIÓN: búsqueda exacta usando search.json ---
+async function findProductByExactSKU(jsClient, sku) {
+  try {
+    const resp = await jsClient.get(`/search.json`, { params: { q: sku } });
+    const products = resp.data?.products || [];
+
+    const exactMatch = products.find(
+      (p) => String(p.sku).trim() === String(sku).trim()
+    );
+
+    if (exactMatch) {
+      console.log(`✅ Coincidencia exacta encontrada para SKU ${sku} → ID ${exactMatch.id}`);
+      return normalizeProductFromApi(exactMatch);
+    } else {
+      console.log(`⚠️ No se encontró coincidencia exacta para SKU ${sku}`);
+      return null;
+    }
+  } catch (error) {
+    console.error(`❌ Error al buscar SKU ${sku}:`, error.message);
+    return null;
+  }
+}
+
 // ------------------
 // RUTA: subida y previsualización
 // ------------------
@@ -92,9 +114,8 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       const precioRaw = keys["precio"] || keys["price"] || keys["importe"] || "";
       const precio = precioRaw === "" ? "" : String(precioRaw).replace(/[^\d\.,-]/g, "").replace(",", ".");
       const fechaRaw = keys["fecha"] || keys["fecha actualizacion"] || keys["fecha actualización"] || keys["fecha_modificacion"] || "";
-      const fecha = toDDMMYY(fechaRaw); // <-- normaliza a formato DD/MM/YY
+      const fecha = toDDMMYY(fechaRaw);
 
-      // 🧠 VALIDACIONES COD.INT
       let errorCodInt = "";
 
       if (!sku) {
@@ -110,28 +131,10 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       }
 
       let apiProduct = null;
-      let apiStatus = null;
 
-      // Si hay error en COD.INT, no busca en Jumpseller
       if (!errorCodInt) {
-        try {
-          const resp = await jsClient.get(`/products/search.json`, { params: { query: sku } });
-          apiStatus = resp.status;
-          const data = resp.data;
-          let found = null;
-          if (Array.isArray(data) && data.length) found = data[0];
-          else if (data?.products?.length) found = data.products[0];
-          else if (data?.product) found = data.product;
-          else if (data && typeof data === "object") {
-            const arr = Object.values(data).flat().filter(Boolean);
-            if (arr.length) found = arr[0];
-          }
-          if (found) apiProduct = normalizeProductFromApi(found);
-          else errorCodInt = "No encontrado en Jumpseller";
-        } catch (err) {
-          console.error("Error buscando SKU en Jumpseller:", sku, err?.response?.status, err?.message);
-          errorCodInt = "Error consultando Jumpseller";
-        }
+        apiProduct = await findProductByExactSKU(jsClient, sku);
+        if (!apiProduct) errorCodInt = "No encontrado en Jumpseller";
       }
 
       preview.push({
@@ -140,8 +143,8 @@ app.post("/upload", upload.single("file"), async (req, res) => {
         price_new: precio,
         date_new: fecha,
         jumpseller_id: apiProduct?.id || null,
-        api_status: apiStatus || null,
-        error_cod_int: errorCodInt, // <-- NUEVA COLUMNA
+        api_status: apiProduct ? 200 : null,
+        error_cod_int: errorCodInt,
       });
     }
 
@@ -183,10 +186,8 @@ app.post("/confirm", async (req, res) => {
       continue;
     }
 
-    // Normalizar la fecha antes de enviar (por si viene como xx/xx/xxxx)
     const fechaParaEnviar = toDDMMYY(dateNew);
 
-    // Obtener el id del campo "Fecha" para ese producto
     let fieldId = null;
     let productBefore = null;
     try {
@@ -210,19 +211,13 @@ app.post("/confirm", async (req, res) => {
       );
     }
 
-    // --- LOG ANTES DE ACTUALIZAR ---
     console.log(`--- Producto antes de actualización: ID ${productId} ---`);
     console.log(JSON.stringify(productBefore, null, 2));
     console.log("-------------------------------");
 
-    // Actualizar precio si corresponde
     let priceOk = true;
     let priceResp = null;
-    if (
-      priceNewRaw !== undefined &&
-      priceNewRaw !== null &&
-      priceNewRaw !== ""
-    ) {
+    if (priceNewRaw !== undefined && priceNewRaw !== null && priceNewRaw !== "") {
       try {
         const priceBody = {
           product: {
@@ -245,19 +240,15 @@ app.post("/confirm", async (req, res) => {
       }
     }
 
-    // --- Actualizar el campo personalizado usando el endpoint correcto ---
     let fechaOk = true;
     let fechaResp = null;
     if (fieldId && fechaParaEnviar) {
       try {
-        const fieldBody = {
-          field: { value: fechaParaEnviar },
-        };
+        const fieldBody = { field: { value: fechaParaEnviar } };
         fechaResp = await jsClient.put(
           `/products/${productId}/fields/${fieldId}.json`,
           fieldBody
         );
-        // LOG después de actualizar campo personalizado
         console.log(
           `--- PUT campo personalizado Fecha: Producto ID ${productId} / Field ID ${fieldId} ---`
         );
@@ -292,7 +283,6 @@ app.post("/confirm", async (req, res) => {
   return res.json({ results });
 });
 
-// Servir index.html
 app.get("/", (req, res) => {
   res.sendFile(path.join(process.cwd(), "public", "index.html"));
 });
