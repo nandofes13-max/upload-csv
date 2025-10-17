@@ -92,7 +92,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       const precioRaw = keys["precio"] || keys["price"] || keys["importe"] || "";
       const precio = precioRaw === "" ? "" : String(precioRaw).replace(/[^\d\.,-]/g, "").replace(",", ".");
       const fechaRaw = keys["fecha"] || keys["fecha actualizacion"] || keys["fecha actualización"] || keys["fecha_modificacion"] || "";
-      const fecha = toDDMMYY(fechaRaw); // <-- normaliza a formato DD/MM/YY
+      const fecha = toDDMMYY(fechaRaw);
 
       // 🧠 VALIDACIONES COD.INT
       let errorCodInt = "";
@@ -115,19 +115,33 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       // Si hay error en COD.INT, no busca en Jumpseller
       if (!errorCodInt) {
         try {
-          const resp = await jsClient.get(`/products/search.json`, { params: { query: sku } });
+          // ✅ CORRECCIÓN: Búsqueda exacta por SKU
+          const resp = await jsClient.get(`/products.json`, { 
+            params: { 
+              sku: sku, 
+              exact: true 
+            } 
+          });
           apiStatus = resp.status;
           const data = resp.data;
+          
           let found = null;
-          if (Array.isArray(data) && data.length) found = data[0];
-          else if (data?.products?.length) found = data.products[0];
-          else if (data?.product) found = data.product;
-          else if (data && typeof data === "object") {
-            const arr = Object.values(data).flat().filter(Boolean);
-            if (arr.length) found = arr[0];
+          if (Array.isArray(data) && data.length > 0) {
+            found = data[0]; // Tomar el primer producto del array
+          } else if (data?.products?.length) {
+            found = data.products[0];
           }
-          if (found) apiProduct = normalizeProductFromApi(found);
-          else errorCodInt = "No encontrado en Jumpseller";
+          
+          if (found) {
+            apiProduct = normalizeProductFromApi(found);
+            // Verificar que el SKU coincida exactamente
+            if (apiProduct.sku !== sku) {
+              errorCodInt = "SKU no coincide exactamente";
+              apiProduct = null;
+            }
+          } else {
+            errorCodInt = "No encontrado en Jumpseller";
+          }
         } catch (err) {
           console.error("Error buscando SKU en Jumpseller:", sku, err?.response?.status, err?.message);
           errorCodInt = "Error consultando Jumpseller";
@@ -141,7 +155,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
         date_new: fecha,
         jumpseller_id: apiProduct?.id || null,
         api_status: apiStatus || null,
-        error_cod_int: errorCodInt, // <-- NUEVA COLUMNA
+        error_cod_int: errorCodInt,
       });
     }
 
