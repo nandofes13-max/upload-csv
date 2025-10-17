@@ -27,12 +27,12 @@ function toDDMMYY(raw) {
 
   const s = String(raw).trim();
   
-  // ✅ SOLUCIÓN: Convertir MM/DD/YY a DD/MM/YY (problema LibreOffice)
+  // Detectar y corregir formato MM/DD/YY a DD/MM/YY
   const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
   if (m) {
-    const part1 = m[1]; // Mes o día
-    const part2 = m[2]; // Día o mes
-    const part3 = m[3].length === 4 ? m[3].slice(-2) : m[3]; // Año
+    const part1 = m[1];
+    const part2 = m[2];
+    const part3 = m[3].length === 4 ? m[3].slice(-2) : m[3];
     
     // Si part1 <= 12 y part2 > 12, es MM/DD/YY - intercambiar
     if (parseInt(part1) <= 12 && parseInt(part2) > 12) {
@@ -46,6 +46,7 @@ function toDDMMYY(raw) {
 
   return s;
 }
+
 // Crear cliente Jumpseller
 function createJumpsellerClient() {
   const login = process.env.JUMPS_LOGIN;
