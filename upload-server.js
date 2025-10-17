@@ -65,49 +65,24 @@ function normalizeProductFromApi(obj) {
   return { id, name, sku, price };
 }
 
-// 🔍 Nueva versión temporal de findProductBySKU con logs para ver los resultados
-async function findProductBySKU(sku, token, store) {
+// --- NUEVA FUNCIÓN: búsqueda exacta usando search.json ---
+async function findProductByExactSKU(jsClient, sku) {
   try {
-    const response = await axios.get(
-      `https://${store}.jumpseller.com/api/products/search.json?query=${sku}&limit=100`,
-      {
-        headers: {
-          Authorization: `Basic ${token}`,
-        },
-      }
-    );
+    console.log(`🔍 Buscando productos para SKU "${sku}"...`);
 
-    const products = response.data || [];
+    const resp = await jsClient.get(`/products/search.json`, {
+      params: { query: sku, limit: 100 },
+    });
 
-    console.log(`\n=== 🔍 RESULTADOS SEARCH.JSON para SKU buscado: ${sku} ===`);
+    const products = resp.data || [];
+    console.log(`📦 Se obtuvieron ${products.length} productos del search.json para "${sku}"`);
     products.forEach((p, i) => {
       console.log(`${i + 1}. ID: ${p.id} | SKU: ${p.sku} | Nombre: ${p.name}`);
     });
-    console.log(`=== Fin de resultados (${products.length}) ===\n`);
 
-    // Buscar coincidencia exacta de SKU
     const exactMatch = products.find(
-      (p) => String(p.sku).trim() === String(sku).trim()
+      (p) => String(p.sku || "").trim().toLowerCase() === String(sku).trim().toLowerCase()
     );
-
-    if (exactMatch) {
-      console.log(`✅ Coincidencia exacta encontrada para SKU ${sku}: ID ${exactMatch.id}`);
-      return exactMatch;
-    } else {
-      console.log(`❌ No se encontró coincidencia exacta para SKU ${sku}`);
-      return null;
-    }
-  } catch (error) {
-    console.error(`Error buscando producto con SKU ${sku}:`, error.message);
-    return null;
-  }
-}
-
-    const exactMatch = products.find((p) => {
-      const productSku = String(p.sku || "").trim().toLowerCase();
-      const excelSku = String(sku).trim().toLowerCase();
-      return productSku === excelSku;
-    });
 
     if (exactMatch) {
       console.log(`✅ Coincidencia exacta encontrada para SKU "${sku}" → ID ${exactMatch.id}`);
@@ -117,7 +92,7 @@ async function findProductBySKU(sku, token, store) {
       return null;
     }
   } catch (error) {
-    console.error(`❌ Error al buscar SKU ${sku}:`, error.message);
+    console.error(`❌ Error al buscar SKU ${sku}:`, error.response?.status, error.message);
     return null;
   }
 }
@@ -158,14 +133,11 @@ app.post("/upload", multer({ dest: "uploads/" }).single("file"), async (req, res
         errorCodInt = "Código igual a 0";
       } else if (!/^[A-Za-z0-9\-_]+$/.test(sku)) {
         errorCodInt = "Contiene caracteres inválidos";
-      } else if (sku.length < 3) {
+      } else if (sku.length < 1) {
         errorCodInt = "Código demasiado corto";
-      } else if (sku.length > 30) {
-        errorCodInt = "Código demasiado largo";
       }
 
       let apiProduct = null;
-
       if (!errorCodInt) {
         apiProduct = await findProductByExactSKU(jsClient, sku);
         if (!apiProduct) errorCodInt = "No encontrado en Jumpseller";
