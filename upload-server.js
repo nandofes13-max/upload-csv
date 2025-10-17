@@ -115,82 +115,17 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       // Si hay error en COD.INT, no busca en Jumpseller
       if (!errorCodInt) {
         try {
-          console.log(`\n🔍 ===== BÚSQUEDA PARA COD.INT: "${sku}" =====`);
+          // ✅ ENDPOINT OPTIMIZADO - Solo el que funciona
+          const resp = await jsClient.get(`/products/search.json`, { 
+            params: { query: sku } 
+          });
           
-          // PROBAR 3 ENDPOINTS DIFERENTES SECUENCIALMENTE
-          let data = null;
-          let apiEndpoint = '';
-
-          // Opción 1: Búsqueda general (actual)
-          console.log(`📡 PRUEBA 1: Búsqueda general`);
-          try {
-            const resp1 = await jsClient.get(`/products/search.json`, { params: { query: sku } });
-            apiStatus = resp1.status;
-            data = resp1.data;
-            apiEndpoint = '/products/search.json?query=214';
-            console.log(`✅ Endpoint 1 - Productos encontrados: ${Array.isArray(data) ? data.length : '0'}`);
-            
-            // Mostrar estructura de los primeros resultados
-            if (Array.isArray(data) && data.length > 0) {
-              console.log(`📝 Primeros 3 productos del Endpoint 1:`);
-              data.slice(0, 3).forEach((item, index) => {
-                const product = item.product || item;
-                console.log(`   ${index + 1}. SKU: "${product.sku}" - Nombre: "${product.name}"`);
-              });
-            }
-          } catch (err) {
-            console.log(`❌ Endpoint 1 falló:`, err.message);
-          }
-
-          // Si no encontró nada, probar Opción 2
-          if (!data || (Array.isArray(data) && data.length === 0)) {
-            console.log(`\n📡 PRUEBA 2: Búsqueda por SKU exacto`);
-            try {
-              const resp2 = await jsClient.get(`/products.json`, { params: { sku: sku, exact: true } });
-              apiStatus = resp2.status;
-              data = resp2.data;
-              apiEndpoint = '/products.json?sku=214&exact=true';
-              console.log(`✅ Endpoint 2 - Productos encontrados: ${Array.isArray(data) ? data.length : '0'}`);
-              
-              if (Array.isArray(data) && data.length > 0) {
-                console.log(`📝 Productos del Endpoint 2:`);
-                data.forEach((item, index) => {
-                  const product = item.product || item;
-                  console.log(`   ${index + 1}. SKU: "${product.sku}" - Nombre: "${product.name}"`);
-                });
-              }
-            } catch (err) {
-              console.log(`❌ Endpoint 2 falló:`, err.message);
-            }
-          }
-
-          // Si todavía no encontró nada, probar Opción 3
-          if (!data || (Array.isArray(data) && data.length === 0)) {
-            console.log(`\n📡 PRUEBA 3: Búsqueda alternativa`);
-            try {
-              const resp3 = await jsClient.get(`/products.json`, { params: { search: sku } });
-              apiStatus = resp3.status;
-              data = resp3.data;
-              apiEndpoint = '/products.json?search=214';
-              console.log(`✅ Endpoint 3 - Productos encontrados: ${Array.isArray(data) ? data.length : '0'}`);
-              
-              if (Array.isArray(data) && data.length > 0) {
-                console.log(`📝 Productos del Endpoint 3:`);
-                data.forEach((item, index) => {
-                  const product = item.product || item;
-                  console.log(`   ${index + 1}. SKU: "${product.sku}" - Nombre: "${product.name}"`);
-                });
-              }
-            } catch (err) {
-              console.log(`❌ Endpoint 3 falló:`, err.message);
-            }
-          }
-
-          console.log(`🎯 Endpoint usado finalmente: ${apiEndpoint}`);
-          console.log(`🔍 ===== FIN BÚSQUEDA =====\n`);
+          apiStatus = resp.status;
+          const data = resp.data;
           
-          // Buscar coincidencia exacta en los resultados
+          // Buscar coincidencia exacta de SKU en TODOS los resultados
           let found = null;
+          
           if (Array.isArray(data) && data.length) {
             found = data.find(item => {
               const product = item.product || item;
@@ -218,13 +153,13 @@ app.post("/upload", upload.single("file"), async (req, res) => {
           
           if (found) {
             apiProduct = normalizeProductFromApi(found);
-            console.log(`🎉 PRODUCTO ENCONTRADO: ${apiProduct.name} (SKU: ${apiProduct.sku})`);
+            console.log(`✅ Encontrado: ${apiProduct.name} (SKU: ${apiProduct.sku})`);
           } else {
-            errorCodInt = "No encontrado en Jumpseller (SKU no coincide exactamente)";
-            console.log(`❌ No se encontró producto con SKU exacto: "${sku}"`);
+            errorCodInt = "No encontrado en Jumpseller";
+            console.log(`❌ No encontrado: "${sku}"`);
           }
         } catch (err) {
-          console.error("Error buscando SKU en Jumpseller:", sku, err?.response?.status, err?.message);
+          console.error("Error buscando SKU:", sku, err?.response?.status, err?.message);
           errorCodInt = "Error consultando Jumpseller";
         }
       }
