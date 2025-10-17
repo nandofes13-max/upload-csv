@@ -119,61 +119,42 @@ app.post("/upload", upload.single("file"), async (req, res) => {
           apiStatus = resp.status;
           const data = resp.data;
           
-          // 🔍 DIAGNÓSTICO COMPLETO - SE ACTIVA AL SUBIR Y PREVISUALIZAR
+          // 🔍 DIAGNÓSTICO MEJORADO - ESTRUCTURA REAL COMPLETA
           console.log(`\n🔍 ===== BÚSQUEDA COMPLETA PARA COD.INT: "${sku}" =====`);
-          console.log(`📊 Total de resultados: ${Array.isArray(data) ? data.length : '0'}`);
-          
-          let found = null;
-          
+          console.log(`📊 Estructura completa de la respuesta:`, JSON.stringify(data, null, 2));
+          console.log(`📋 Tipo de datos: ${Array.isArray(data) ? 'Array' : typeof data}`);
+          console.log(`📊 Cantidad de elementos: ${Array.isArray(data) ? data.length : 'No es array'}`);
+
           if (Array.isArray(data) && data.length > 0) {
-            console.log(`📋 LISTA COMPLETA DE PRODUCTOS ENCONTRADOS:`);
-            data.forEach((product, index) => {
+            console.log(`\n📝 PRODUCTOS ENCONTRADOS (estructura real):`);
+            data.forEach((item, index) => {
+              console.log(`\n   --- Producto ${index + 1} ---`);
+              console.log(`   Estructura completa:`, JSON.stringify(item, null, 2));
+              
+              // Extraer datos de diferentes estructuras posibles
+              const product = item.product || item;
               const productId = product.id || 'N/A';
               const productSku = product.sku || (product.variants && product.variants[0]?.sku) || 'N/A';
               const productName = product.name || 'Sin nombre';
               
-              // Marcar si es el que buscamos
-              const isTarget = productSku === sku ? "🎯 ⬅️ BUSCADO" : "";
-              
-              console.log(`   ${index + 1}. ID: ${productId} | SKU: "${productSku}" | Producto: "${productName}" ${isTarget}`);
+              console.log(`   ID: ${productId} | SKU: "${productSku}" | Nombre: "${productName}"`);
             });
-            
-            // Buscar coincidencia exacta de SKU
-            found = data.find(product => {
-              const productSku = product.sku || (product.variants && product.variants[0]?.sku);
-              return productSku === sku;
-            });
-            
-            if (found) {
-              console.log(`🎯 ¡ENCONTRADO! Producto con SKU "${sku}": ${found.name} (ID: ${found.id})`);
-            } else {
-              console.log(`❌ No se encontró ningún producto con SKU exacto "${sku}" en los ${data.length} resultados`);
-            }
-          } else if (data?.products?.length) {
-            found = data.products.find(product => {
-              const productSku = product.sku || (product.variants && product.variants[0]?.sku);
-              return productSku === sku;
-            });
-          } else if (data?.product) {
-            const productSku = data.product.sku || (data.product.variants && data.product.variants[0]?.sku);
-            if (productSku === sku) {
-              found = data.product;
-            }
-          } else if (data && typeof data === "object") {
-            const arr = Object.values(data).flat().filter(Boolean);
-            found = arr.find(product => {
-              const productSku = product.sku || (product.variants && product.variants[0]?.sku);
-              return productSku === sku;
-            });
-          }
-          
-          console.log(`🔍 ===== FIN BÚSQUEDA PARA "${sku}" =====\n`);
-          
-          if (found) {
-            apiProduct = normalizeProductFromApi(found);
           } else {
-            errorCodInt = "No encontrado en Jumpseller (SKU no coincide exactamente)";
+            console.log(`❌ No se encontraron productos en formato array`);
           }
+
+          console.log(`🔍 ===== FIN BÚSQUEDA =====\n`);
+          
+          let found = null;
+          if (Array.isArray(data) && data.length) found = data[0];
+          else if (data?.products?.length) found = data.products[0];
+          else if (data?.product) found = data.product;
+          else if (data && typeof data === "object") {
+            const arr = Object.values(data).flat().filter(Boolean);
+            if (arr.length) found = arr[0];
+          }
+          if (found) apiProduct = normalizeProductFromApi(found);
+          else errorCodInt = "No encontrado en Jumpseller";
         } catch (err) {
           console.error("Error buscando SKU en Jumpseller:", sku, err?.response?.status, err?.message);
           errorCodInt = "Error consultando Jumpseller";
