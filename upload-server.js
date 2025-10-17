@@ -92,7 +92,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       const precioRaw = keys["precio"] || keys["price"] || keys["importe"] || "";
       const precio = precioRaw === "" ? "" : String(precioRaw).replace(/[^\d\.,-]/g, "").replace(",", ".");
       const fechaRaw = keys["fecha"] || keys["fecha actualizacion"] || keys["fecha actualización"] || keys["fecha_modificacion"] || "";
-      const fecha = toDDMMYY(fechaRaw);
+      const fecha = toDDMMYY(fechaRaw); // <-- normaliza a formato DD/MM/YY
 
       // 🧠 VALIDACIONES COD.INT
       let errorCodInt = "";
@@ -115,52 +115,21 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       // Si hay error en COD.INT, no busca en Jumpseller
       if (!errorCodInt) {
         try {
-          // ✅ CORRECCIÓN: Búsqueda exacta por SKU
-          console.log(`🔍 Buscando SKU exacto: "${sku}"`);
-          
-          const resp = await jsClient.get(`/products.json`, { 
-            params: { 
-              sku: sku, 
-              exact: true 
-            } 
-          });
-          
+          const resp = await jsClient.get(`/products/search.json`, { params: { query: sku } });
           apiStatus = resp.status;
           const data = resp.data;
-          
-          console.log(`📦 Respuesta API para SKU "${sku}":`, JSON.stringify(data, null, 2));
-          
           let found = null;
-          
-          // ✅ CORRECCIÓN: Manejar la estructura real de la respuesta
-          if (Array.isArray(data) && data.length > 0) {
-            // La API devuelve [{product: {...}}, {product: {...}}]
-            const productWithWrapper = data[0];
-            if (productWithWrapper && productWithWrapper.product) {
-              found = productWithWrapper.product;
-              console.log(`✅ Producto encontrado: ${found.name} (SKU: ${found.sku})`);
-            }
-          } else if (data?.products?.length) {
-            found = data.products[0];
-            console.log(`✅ Producto encontrado: ${found.name} (SKU: ${found.sku})`);
+          if (Array.isArray(data) && data.length) found = data[0];
+          else if (data?.products?.length) found = data.products[0];
+          else if (data?.product) found = data.product;
+          else if (data && typeof data === "object") {
+            const arr = Object.values(data).flat().filter(Boolean);
+            if (arr.length) found = arr[0];
           }
-          
-          if (!found) {
-            console.log(`❌ No se encontró producto con SKU: "${sku}"`);
-            errorCodInt = "No encontrado en Jumpseller";
-          } else {
-            apiProduct = normalizeProductFromApi(found);
-            // Verificar que el SKU coincida exactamente
-            if (apiProduct.sku !== sku) {
-              console.log(`⚠️  SKU no coincide: esperado "${sku}", encontrado "${apiProduct.sku}"`);
-              errorCodInt = "SKU no coincide exactamente";
-              apiProduct = null;
-            } else {
-              console.log(`🎯 SKU coincide perfectamente: "${sku}"`);
-            }
-          }
+          if (found) apiProduct = normalizeProductFromApi(found);
+          else errorCodInt = "No encontrado en Jumpseller";
         } catch (err) {
-          console.error("❌ Error buscando SKU en Jumpseller:", sku, err?.response?.status, err?.response?.data || err?.message);
+          console.error("Error buscando SKU en Jumpseller:", sku, err?.response?.status, err?.message);
           errorCodInt = "Error consultando Jumpseller";
         }
       }
@@ -172,7 +141,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
         date_new: fecha,
         jumpseller_id: apiProduct?.id || null,
         api_status: apiStatus || null,
-        error_cod_int: errorCodInt,
+        error_cod_int: errorCodInt, // <-- NUEVA COLUMNA
       });
     }
 
