@@ -118,16 +118,41 @@ app.post("/upload", upload.single("file"), async (req, res) => {
           const resp = await jsClient.get(`/products/search.json`, { params: { query: sku } });
           apiStatus = resp.status;
           const data = resp.data;
+          
           let found = null;
-          if (Array.isArray(data) && data.length) found = data[0];
-          else if (data?.products?.length) found = data.products[0];
-          else if (data?.product) found = data.product;
-          else if (data && typeof data === "object") {
+          
+          // ✅ MODIFICACIÓN: Buscar coincidencia exacta de SKU en todos los resultados
+          if (Array.isArray(data) && data.length) {
+            // Buscar en TODOS los resultados el que tenga SKU exacto
+            found = data.find(product => {
+              const productSku = product.sku || (product.variants && product.variants[0]?.sku);
+              return productSku === sku;
+            });
+          } else if (data?.products?.length) {
+            found = data.products.find(product => {
+              const productSku = product.sku || (product.variants && product.variants[0]?.sku);
+              return productSku === sku;
+            });
+          } else if (data?.product) {
+            const productSku = data.product.sku || (data.product.variants && data.product.variants[0]?.sku);
+            if (productSku === sku) {
+              found = data.product;
+            }
+          } else if (data && typeof data === "object") {
             const arr = Object.values(data).flat().filter(Boolean);
-            if (arr.length) found = arr[0];
+            found = arr.find(product => {
+              const productSku = product.sku || (product.variants && product.variants[0]?.sku);
+              return productSku === sku;
+            });
           }
-          if (found) apiProduct = normalizeProductFromApi(found);
-          else errorCodInt = "No encontrado en Jumpseller";
+          
+          if (found) {
+            apiProduct = normalizeProductFromApi(found);
+            console.log(`✅ Encontrado producto exacto: ${apiProduct.name} (SKU: ${apiProduct.sku})`);
+          } else {
+            errorCodInt = "No encontrado en Jumpseller (SKU no coincide exactamente)";
+            console.log(`❌ No se encontró producto con SKU exacto: "${sku}"`);
+          }
         } catch (err) {
           console.error("Error buscando SKU en Jumpseller:", sku, err?.response?.status, err?.message);
           errorCodInt = "Error consultando Jumpseller";
@@ -141,7 +166,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
         date_new: fecha,
         jumpseller_id: apiProduct?.id || null,
         api_status: apiStatus || null,
-        error_cod_int: errorCodInt, // <-- NUEVA COLUMNA
+        error_cod_int: errorCodInt,
       });
     }
 
