@@ -116,26 +116,36 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       if (!errorCodInt) {
         try {
           // ✅ CORRECCIÓN: Búsqueda exacta por SKU
+          console.log(`🔍 Buscando SKU exacto: "${sku}"`);
+          
           const resp = await jsClient.get(`/products.json`, { 
             params: { 
               sku: sku, 
               exact: true 
             } 
           });
+          
           apiStatus = resp.status;
           const data = resp.data;
           
+          console.log(`📦 Respuesta API para SKU "${sku}":`, JSON.stringify(data, null, 2));
+          
           let found = null;
           if (Array.isArray(data) && data.length > 0) {
-            found = data[0]; // Tomar el primer producto del array
+            found = data[0];
+            console.log(`✅ Producto encontrado: ${found.name} (SKU: ${found.sku})`);
           } else if (data?.products?.length) {
             found = data.products[0];
+            console.log(`✅ Producto encontrado: ${found.name} (SKU: ${found.sku})`);
+          } else {
+            console.log(`❌ No se encontró producto con SKU: "${sku}"`);
           }
           
           if (found) {
             apiProduct = normalizeProductFromApi(found);
             // Verificar que el SKU coincida exactamente
             if (apiProduct.sku !== sku) {
+              console.log(`⚠️  SKU no coincide: esperado "${sku}", encontrado "${apiProduct.sku}"`);
               errorCodInt = "SKU no coincide exactamente";
               apiProduct = null;
             }
@@ -143,7 +153,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
             errorCodInt = "No encontrado en Jumpseller";
           }
         } catch (err) {
-          console.error("Error buscando SKU en Jumpseller:", sku, err?.response?.status, err?.message);
+          console.error("❌ Error buscando SKU en Jumpseller:", sku, err?.response?.status, err?.response?.data || err?.message);
           errorCodInt = "Error consultando Jumpseller";
         }
       }
