@@ -65,21 +65,32 @@ function normalizeProductFromApi(obj) {
   return { id, name, sku, price };
 }
 
-// --- NUEVA FUNCIÓN: búsqueda exacta usando search.json ---
+// --- NUEVA FUNCIÓN: búsqueda exacta usando search.json y listado de resultados ---
 async function findProductByExactSKU(jsClient, sku) {
   try {
+    if (!sku || typeof sku !== "string" || sku.trim() === "") return null;
+
     const resp = await jsClient.get(`/search.json`, { params: { q: sku } });
     const products = resp.data?.products || [];
 
-    const exactMatch = products.find(
-      (p) => String(p.sku).trim() === String(sku).trim()
-    );
+    console.log(`🔍 Resultados devueltos por search.json para "${sku}" (${products.length} encontrados):`);
+    products.slice(0, 100).forEach((p, i) => {
+      console.log(
+        `${String(i + 1).padStart(2, "0")}. ID: ${p.id} | SKU: ${p.sku} | Nombre: ${p.name}`
+      );
+    });
+
+    const exactMatch = products.find((p) => {
+      const productSku = String(p.sku || "").trim().toLowerCase();
+      const excelSku = String(sku).trim().toLowerCase();
+      return productSku === excelSku;
+    });
 
     if (exactMatch) {
-      console.log(`✅ Coincidencia exacta encontrada para SKU ${sku} → ID ${exactMatch.id}`);
+      console.log(`✅ Coincidencia exacta encontrada para SKU "${sku}" → ID ${exactMatch.id}`);
       return normalizeProductFromApi(exactMatch);
     } else {
-      console.log(`⚠️ No se encontró coincidencia exacta para SKU ${sku}`);
+      console.log(`⚠️ No se encontró coincidencia exacta para SKU "${sku}"`);
       return null;
     }
   } catch (error) {
@@ -91,7 +102,7 @@ async function findProductByExactSKU(jsClient, sku) {
 // ------------------
 // RUTA: subida y previsualización
 // ------------------
-app.post("/upload", upload.single("file"), async (req, res) => {
+app.post("/upload", multer({ dest: "uploads/" }).single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No se subió archivo" });
 
   const filePath = req.file.path;
