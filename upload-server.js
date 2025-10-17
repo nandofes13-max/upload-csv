@@ -112,27 +112,27 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       let apiProduct = null;
       let apiStatus = null;
 
-   if (!errorCodInt) {
-  try {
-    // 🔍 Buscar por coincidencia EXACTA de SKU usando endpoint directo
-    const resp = await jsClient.get(`/products/sku/${encodeURIComponent(sku)}.json`);
-    apiStatus = resp.status;
-
-    const data = resp.data;
-    if (data?.product) {
-      apiProduct = normalizeProductFromApi(data.product);
-    } else {
-      errorCodInt = "No encontrado (sin coincidencia exacta)";
-    }
-  } catch (err) {
-    if (err?.response?.status === 404) {
-      errorCodInt = "No encontrado (SKU inexistente)";
-    } else {
-      console.error("Error buscando SKU exacto:", sku, err?.response?.status, err?.message);
-      errorCodInt = "Error consultando Jumpseller";
-    }
-  }
-}
+      // Si hay error en COD.INT, no busca en Jumpseller
+      if (!errorCodInt) {
+        try {
+          const resp = await jsClient.get(`/products/search.json`, { params: { query: sku } });
+          apiStatus = resp.status;
+          const data = resp.data;
+          let found = null;
+          if (Array.isArray(data) && data.length) found = data[0];
+          else if (data?.products?.length) found = data.products[0];
+          else if (data?.product) found = data.product;
+          else if (data && typeof data === "object") {
+            const arr = Object.values(data).flat().filter(Boolean);
+            if (arr.length) found = arr[0];
+          }
+          if (found) apiProduct = normalizeProductFromApi(found);
+          else errorCodInt = "No encontrado en Jumpseller";
+        } catch (err) {
+          console.error("Error buscando SKU en Jumpseller:", sku, err?.response?.status, err?.message);
+          errorCodInt = "Error consultando Jumpseller";
+        }
+      }
 
       preview.push({
         product_name: apiProduct?.name || "(no encontrado)",
