@@ -13,17 +13,22 @@ app.use(express.static(path.join(process.cwd(), "public")));
 
 const upload = multer({ dest: "uploads/" });
 
-// --- Helpers ---
+ //funcion fecha
 function toDDMMYY(raw) {
   if (raw === null || raw === undefined || raw === "") return "";
+
+  // Log temporal para diagnóstico
+  console.log(`📅 Fecha RAW: "${raw}" → Tipo: ${typeof raw}`);
 
   // Si viene como número (serial Excel)
   if (typeof raw === "number") {
     const date = new Date(Math.round((raw - 25569) * 86400 * 1000));
     const dd = String(date.getUTCDate()).padStart(2, "0");
     const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
-    const yy = String(date.getUTCFullYear()).slice(-2);
-    return `${dd}/${mm}/${yy}`;
+    const yy = String(date.getUTFullYear()).slice(-2);
+    const result = `${dd}/${mm}/${yy}`;
+    console.log(`🔢 Fecha desde número: ${raw} → ${result}`);
+    return result;
   }
 
   if (raw instanceof Date) {
@@ -34,17 +39,39 @@ function toDDMMYY(raw) {
   }
 
   const s = String(raw).trim();
+  
+  // Detectar formato
   const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
   if (m) {
-    const dd = m[1].padStart(2, "0");
-    const mm = m[2].padStart(2, "0");
-    const yy = m[3].length === 4 ? m[3].slice(-2) : m[3];
-    return `${dd}/${mm}/${yy}`;
+    const part1 = m[1];
+    const part2 = m[2];
+    const part3 = m[3];
+    
+    console.log(`📋 Partes detectadas: ${part1}/${part2}/${part3}`);
+    
+    // Si el primer número es > 12, asumimos que es DD/MM/YY
+    if (parseInt(part1) > 12) {
+      const result = `${part1.padStart(2, "0")}/${part2.padStart(2, "0")}/${part3.length === 4 ? part3.slice(-2) : part3}`;
+      console.log(`✅ Formato DD/MM/YY detectado: ${result}`);
+      return result;
+    }
+    // Si el segundo número es > 12, asumimos que es MM/DD/YY
+    else if (parseInt(part2) > 12) {
+      const result = `${part2.padStart(2, "0")}/${part1.padStart(2, "0")}/${part3.length === 4 ? part3.slice(-2) : part3}`;
+      console.log(`🔄 Formato MM/DD/YY convertido: ${result}`);
+      return result;
+    }
+    // Si ambos son <= 12, asumimos DD/MM/YY (más común en español)
+    else {
+      const result = `${part1.padStart(2, "0")}/${part2.padStart(2, "0")}/${part3.length === 4 ? part3.slice(-2) : part3}`;
+      console.log(`🤔 Ambos <=12 - Asumiendo DD/MM/YY: ${result}`);
+      return result;
+    }
   }
 
+  console.log(`❓ Formato no reconocido, devolviendo original: "${s}"`);
   return s;
 }
-
 // Crear cliente Jumpseller
 function createJumpsellerClient() {
   const login = process.env.JUMPS_LOGIN;
