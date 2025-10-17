@@ -27,35 +27,56 @@ function toDDMMYY(raw) {
 
   const s = String(raw).trim();
   
-  // ✅ SOLUCIÓN: Convertir MM/DD/YY a DD/MM/YY (problema LibreOffice)
-  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
-  if (m) {
-    const part1 = m[1]; // Mes o día
-    const part2 = m[2]; // Día o mes
-    const part3 = m[3].length === 4 ? m[3].slice(-2) : m[3]; // Año
-    
-    // Si part1 <= 12 y part2 > 12, es MM/DD/YY - intercambiar
-    if (parseInt(part1) <= 12 && parseInt(part2) > 12) {
-      return `${part2.padStart(2, "0")}/${part1.padStart(2, "0")}/${part3}`;
-    }
-    // Caso contrario, mantener como está (DD/MM/YY)
-    else {
-      return `${part1.padStart(2, "0")}/${part2.padStart(2, "0")}/${part3}`;
-    }
+  function toDDMMYY(raw) {
+  if (raw === null || raw === undefined || raw === "") return "";
+
+  // LOG para diagnóstico
+  console.log("=== DIAGNÓSTICO FECHA ===");
+  console.log("Fecha RAW:", raw);
+  console.log("Tipo:", typeof raw);
+
+  // Si viene como número (serial Excel)
+  if (typeof raw === "number") {
+    console.log("Es número - serial Excel");
+    const date = new Date(Math.round((raw - 25569) * 86400 * 1000));
+    const dd = String(date.getUTCDate()).padStart(2, "0");
+    const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+    const yy = String(date.getUTCFullYear()).slice(-2);
+    const result = `${dd}/${mm}/${yy}`;
+    console.log("Convertido:", result);
+    console.log("========================");
+    return result;
   }
 
+  const s = String(raw).trim();
+  console.log("Como string:", s);
+  
+  // Detectar formato
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (m) {
+    console.log("Partes:", m[1], m[2], m[3]);
+    
+    const part1 = m[1];
+    const part2 = m[2];
+    const part3 = m[3].length === 4 ? m[3].slice(-2) : m[3];
+    
+    // Lógica de conversión
+    let result;
+    if (parseInt(part1) <= 12 && parseInt(part2) > 12) {
+      result = `${part2.padStart(2, "0")}/${part1.padStart(2, "0")}/${part3}`;
+      console.log("CONVERTIDO MM/DD → DD/MM:", result);
+    } else {
+      result = `${part1.padStart(2, "0")}/${part2.padStart(2, "0")}/${part3}`;
+      console.log("MANTENIDO DD/MM:", result);
+    }
+    
+    console.log("========================");
+    return result;
+  }
+
+  console.log("Formato no reconocido, devuelvo:", s);
+  console.log("========================");
   return s;
-}
-// Crear cliente Jumpseller
-function createJumpsellerClient() {
-  const login = process.env.JUMPS_LOGIN;
-  const token = process.env.JUMPS_TOKEN;
-  if (!login || !token) throw new Error("Faltan JUMPS_LOGIN o JUMPS_TOKEN");
-  return axios.create({
-    baseURL: "https://api.jumpseller.com/v1",
-    auth: { username: login, password: token },
-    timeout: 30_000,
-  });
 }
 
 // Normalizar producto de respuesta Jumpseller
