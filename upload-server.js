@@ -65,37 +65,45 @@ function normalizeProductFromApi(obj) {
   return { id, name, sku, price };
 }
 
-// --- NUEVA FUNCIÓN: búsqueda exacta usando search.json ---
+// 🔍 Búsqueda de producto por SKU con logs corregidos
 async function findProductByExactSKU(jsClient, sku) {
+  console.log(`🔍 Buscando productos para SKU "${sku}"...`);
+
   try {
-    console.log(`🔍 Buscando productos para SKU "${sku}"...`);
+    // Obtenemos los productos desde search.json
+    const response = await jsClient.get(`/products/search.json?query=${sku}&limit=100`);
+    const products = response.data.products || [];
 
-    const resp = await jsClient.get(`/products/search.json`, {
-      params: { query: sku, limit: 100 },
-    });
-
-    const products = resp.data || [];
     console.log(`📦 Se obtuvieron ${products.length} productos del search.json para "${sku}"`);
     products.forEach((p, i) => {
       console.log(`${i + 1}. ID: ${p.id} | SKU: ${p.sku} | Nombre: ${p.name}`);
     });
 
-    const exactMatch = products.find(
-      (p) => String(p.sku || "").trim().toLowerCase() === String(sku).trim().toLowerCase()
-    );
+    // Buscar coincidencia exacta de SKU
+    const exactMatch = products.find(p => {
+      const productSku = String(p.sku || "").trim().toLowerCase();
+      const excelSku = String(sku).trim().toLowerCase();
+      return productSku === excelSku;
+    });
 
     if (exactMatch) {
       console.log(`✅ Coincidencia exacta encontrada para SKU "${sku}" → ID ${exactMatch.id}`);
-      return normalizeProductFromApi(exactMatch);
+      return {
+        id: exactMatch.id,
+        name: exactMatch.name,
+        sku: exactMatch.sku,
+        price: exactMatch.price
+      };
     } else {
       console.log(`⚠️ No se encontró coincidencia exacta para SKU "${sku}"`);
       return null;
     }
   } catch (error) {
-    console.error(`❌ Error al buscar SKU ${sku}:`, error.response?.status, error.message);
+    console.error(`❌ Error al buscar SKU "${sku}":`, error.message);
     return null;
   }
 }
+
 
 // ------------------
 // RUTA: subida y previsualización
