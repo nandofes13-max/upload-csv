@@ -14,6 +14,9 @@ app.use(express.static(path.join(process.cwd(), "public")));
 const upload = multer({ dest: "uploads/" });
 
 function toDDMMYY(raw) {
+  // LOG MÍNIMO - solo para diagnóstico
+  console.log("🔍 FECHA RAW:", JSON.stringify(raw), "Tipo:", typeof raw);
+  
   if (raw === null || raw === undefined || raw === "") return "";
 
   // Si viene como número (serial Excel)
@@ -22,28 +25,22 @@ function toDDMMYY(raw) {
     const dd = String(date.getUTCDate()).padStart(2, "0");
     const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
     const yy = String(date.getUTCFullYear()).slice(-2);
-    return `${dd}/${mm}/${yy}`;
+    const result = `${dd}/${mm}/${yy}`;
+    console.log("🔢 Desde número:", raw, "→", result);
+    return result;
   }
 
   const s = String(raw).trim();
   
-  // Detectar y corregir formato MM/DD/YY a DD/MM/YY
+  // Detectar formato
   const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
   if (m) {
-    const part1 = m[1];
-    const part2 = m[2];
-    const part3 = m[3].length === 4 ? m[3].slice(-2) : m[3];
-    
-    // Si part1 <= 12 y part2 > 12, es MM/DD/YY - intercambiar
-    if (parseInt(part1) <= 12 && parseInt(part2) > 12) {
-      return `${part2.padStart(2, "0")}/${part1.padStart(2, "0")}/${part3}`;
-    }
-    // Caso contrario, mantener como está (DD/MM/YY)
-    else {
-      return `${part1.padStart(2, "0")}/${part2.padStart(2, "0")}/${part3}`;
-    }
+    const result = `${m[1].padStart(2, "0")}/${m[2].padStart(2, "0")}/${m[3].length === 4 ? m[3].slice(-2) : m[3]}`;
+    console.log("📅 Formateado:", s, "→", result);
+    return result;
   }
 
+  console.log("❓ No reconocido, devuelvo:", s);
   return s;
 }
 
