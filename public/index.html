@@ -151,16 +151,18 @@
           return;
         }
 
-        // 6. MOSTRAR TABLA CON VISTA PREVIA (TODOS LOS REGISTROS)
+                // 6. MOSTRAR TABLA CON VISTA PREVIA (TODOS LOS REGISTROS CON CABECERA FIJA)
         const headers = Object.keys(previewData[0]);
         const table = `
           <h3>Vista previa - ${previewData.length} registros</h3>
-          <div style="max-height: 500px; overflow-y: auto; border: 1px solid #ccc; margin: 10px 0;">
-            <table>
-              <thead><tr>${headers.map(h => `<th>${h}</th>`).join("")}</tr></thead>
+          <div style="max-height: 500px; overflow: auto; border: 1px solid #ccc; margin: 10px 0; position: relative;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <thead style="position: sticky; top: 0; z-index: 10; background: #eee;">
+                <tr>${headers.map(h => `<th style="padding: 8px; border: 1px solid #aaa; text-align: left; background: #eee;">${h}</th>`).join("")}</tr>
+              </thead>
               <tbody>
                 ${previewData.map(row => `
-                  <tr>${headers.map(h => `<td>${row[h] || ""}</td>`).join("")}</tr>
+                  <tr>${headers.map(h => `<td style="padding: 8px; border: 1px solid #aaa;">${row[h] || ""}</td>`).join("")}</tr>
                 `).join("")}
               </tbody>
             </table>
