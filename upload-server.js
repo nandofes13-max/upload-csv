@@ -19,12 +19,11 @@ function toDDMMYY(raw) {
   console.log("=== DIAGNÓSTICO FECHA ===");
   console.log("Fecha RAW:", raw, "Tipo:", typeof raw);
 
-  // Si viene como número (serial Excel) - FORZAR INTERCAMBIO DÍA/MES
+  // Si viene como número (serial Excel) - INTERCAMBIAR (esto funciona bien)
   if (typeof raw === "number") {
     const date = new Date(Math.round((raw - 25569) * 86400 * 1000));
-    // ✅ INTERCAMBIAR: día se convierte en mes, mes se convierte en día
-    const dd = String(date.getUTCMonth() + 1).padStart(2, "0");   // Mes como día
-    const mm = String(date.getUTCDate()).padStart(2, "0");        // Día como mes
+    const dd = String(date.getUTCMonth() + 1).padStart(2, "0");
+    const mm = String(date.getUTCDate()).padStart(2, "0");
     const yy = String(date.getUTCFullYear()).slice(-2);
     const result = `${dd}/${mm}/${yy}`;
     console.log("🔄 Serial INTERCAMBIADO:", raw, "→", result);
@@ -39,13 +38,13 @@ function toDDMMYY(raw) {
   if (m) {
     console.log("Partes detectadas:", m[1], m[2], m[3]);
     
-    // INTERCAMBIAR SIEMPRE las partes
-    const dd = m[2].padStart(2, "0");  // Segunda parte como día
-    const mm = m[1].padStart(2, "0");  // Primera parte como mes
+    // ✅ CORRECCIÓN: NO intercambiar strings - mantener como DD/MM/YY
+    const dd = m[1].padStart(2, "0");  // Primera parte como día
+    const mm = m[2].padStart(2, "0");  // Segunda parte como mes  
     const yy = m[3].length === 4 ? m[3].slice(-2) : m[3];
     const result = `${dd}/${mm}/${yy}`;
     
-    console.log("🔄 String INTERCAMBIADO:", s, "→", result);
+    console.log("✅ String MANTENIDO:", s, "→", result);
     console.log("========================");
     return result;
   }
