@@ -16,7 +16,21 @@
   <form id="uploadForm">
     <input type="file" id="file" name="file" accept=".xls,.xlsx" required />
     <button type="submit">Subir y previsualizar</button>
-  </form>
+   </form>
+
+  <!-- AGREGAR ESTO: Barra de progreso -->
+  <div id="progress-container" style="display: none; margin: 20px 0;">
+    <div style="background: #e3f2fd; border: 1px solid #2196f3; border-radius: 8px; padding: 15px;">
+      <div style="display: flex; justify-content: between; align-items: center; margin-bottom: 8px;">
+        <strong id="progress-status" style="color: #1976d2;">Procesando archivo...</strong>
+        <span id="progress-percent" style="background: #1976d2; color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px;">0%</span>
+      </div>
+      <div style="background: #e0e0e0; border-radius: 10px; height: 20px; overflow: hidden;">
+        <div id="progress-bar" style="background: linear-gradient(45deg, #2196f3, #1976d2); height: 100%; width: 0%; transition: width 0.3s ease; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: bold;"></div>
+      </div>
+      <small id="progress-message" style="color: #666; display: block; margin-top: 8px;">Iniciando procesamiento...</small>
+    </div>
+  </div>
 
   <div id="preview"></div>
 
