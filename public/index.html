@@ -35,9 +35,74 @@
   <div id="preview"></div>
 
   <script>
-    const form = document.getElementById("uploadForm");
+        const form = document.getElementById("uploadForm");
     const previewDiv = document.getElementById("preview");
     let previewData = [];
+
+    // ========== AGREGAR ESTAS 3 FUNCIONES DE PROGRESO ==========
+    let progressInterval;
+
+    function updateProgress(percent, message = '', status = '') {
+        const progressBar = document.getElementById('progress-bar');
+        const progressPercent = document.getElementById('progress-percent');
+        const progressMessage = document.getElementById('progress-message');
+        const progressStatus = document.getElementById('progress-status');
+        
+        progressBar.style.width = percent + '%';
+        progressPercent.textContent = Math.round(percent) + '%';
+        
+        if (message) {
+            progressMessage.textContent = message;
+        }
+        
+        if (status) {
+            progressStatus.textContent = status;
+        }
+    }
+
+    function toggleProgress(show = true) {
+        const progressContainer = document.getElementById('progress-container');
+        const fileInput = document.getElementById('file');
+        const submitButton = form.querySelector('button');
+        
+        if (show) {
+            progressContainer.style.display = 'block';
+            fileInput.disabled = true;
+            submitButton.disabled = true;
+            submitButton.textContent = 'Procesando...';
+            submitButton.style.opacity = '0.6';
+        } else {
+            progressContainer.style.display = 'none';
+            fileInput.disabled = false;
+            submitButton.disabled = false;
+            submitButton.textContent = 'Subir y previsualizar';
+            submitButton.style.opacity = '1';
+            if (progressInterval) {
+                clearInterval(progressInterval);
+            }
+        }
+    }
+
+    function startProgressSimulation() {
+        let progress = 0;
+        clearInterval(progressInterval);
+        
+        progressInterval = setInterval(() => {
+            if (progress < 80) {
+                progress += Math.random() * 15;
+                if (progress > 80) progress = 80;
+                
+                if (progress < 30) {
+                    updateProgress(progress, 'Subiendo archivo al servidor...', 'Subiendo...');
+                } else if (progress < 60) {
+                    updateProgress(progress, 'Procesando datos Excel...', 'Procesando...');
+                } else {
+                    updateProgress(progress, 'Generando vista previa...', 'Finalizando...');
+                }
+            }
+        }, 400);
+    }
+    // ========== FIN DE FUNCIONES DE PROGRESO ==========
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
