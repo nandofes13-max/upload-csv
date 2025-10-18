@@ -151,20 +151,21 @@
           return;
         }
 
-        // 6. MOSTRAR TABLA CON VISTA PREVIA
+        // 6. MOSTRAR TABLA CON VISTA PREVIA (TODOS LOS REGISTROS)
         const headers = Object.keys(previewData[0]);
         const table = `
-          <h3>Vista previa (${previewData.length} filas)</h3>
-          <table>
-            <thead><tr>${headers.map(h => `<th>${h}</th>`).join("")}</tr></thead>
-            <tbody>
-              ${previewData.slice(0, 10).map(row => `
-                <tr>${headers.map(h => `<td>${row[h] || ""}</td>`).join("")}</tr>
-              `).join("")}
-            </tbody>
-          </table>
-          ${previewData.length > 10 ? `<p><em>Mostrando 10 de ${previewData.length} filas</em></p>` : ''}
-          <button id="confirmBtn" style="margin-top: 15px; padding: 10px 20px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer;">✅ Confirmar actualización</button>
+          <h3>Vista previa - ${previewData.length} registros</h3>
+          <div style="max-height: 500px; overflow-y: auto; border: 1px solid #ccc; margin: 10px 0;">
+            <table>
+              <thead><tr>${headers.map(h => `<th>${h}</th>`).join("")}</tr></thead>
+              <tbody>
+                ${previewData.map(row => `
+                  <tr>${headers.map(h => `<td>${row[h] || ""}</td>`).join("")}</tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+          <button id="confirmBtn" style="margin-top: 15px; padding: 10px 20px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer;">✅ Confirmar actualización de ${previewData.length} productos</button>
         `;
         previewDiv.innerHTML = table;
 
