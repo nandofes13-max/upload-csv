@@ -41,6 +41,7 @@
 
     // ========== AGREGAR ESTAS 3 FUNCIONES DE PROGRESO ==========
     let progressInterval;
+    let confirmInterval;
 
     function updateProgress(percent, message = '', status = '') {
         const progressBar = document.getElementById('progress-bar');
@@ -159,23 +160,53 @@
         previewDiv.innerHTML = table;
 
         // 7. AGREGAR EVENTO AL BOTÓN DE CONFIRMAR
-        document.getElementById("confirmBtn").addEventListener("click", async () => {
-          const res = await fetch("/confirm", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ data: previewData }),
-          });
-          const msg = await res.json();
-          alert(msg.message || "Actualización finalizada correctamente.");
-        });
+               document.getElementById("confirmBtn").addEventListener("click", async () => {
+          // 1. MOSTRAR PROGRESO PARA CONFIRMACIÓN
+          toggleProgress(true);
+          updateProgress(0, 'Iniciando actualización en Jumpseller...', 'Actualizando productos');
+          
+          try {
+            // 2. SIMULAR PROGRESO DURANTE LA ACTUALIZACIÓN
+            let confirmProgress = 0;
+            confirmInterval = setInterval(() => {
+              if (confirmProgress < 80) {
+                confirmProgress += Math.random() * 10;
+                if (confirmProgress > 80) confirmProgress = 80;
+                
+                if (confirmProgress < 40) {
+                  updateProgress(confirmProgress, 'Actualizando precios...', 'Actualizando...');
+                } else {
+                  updateProgress(confirmProgress, 'Actualizando fechas...', 'Actualizando...');
+                }
+              }
+            }, 300);
 
-      } catch (error) {
-        // 8. MANEJAR ERRORES
-        toggleProgress(false);
-        console.error("Error:", error);
-        alert("Error al procesar el archivo: " + error.message);
-      }
-    });
+            // 3. HACER LA PETICIÓN DE CONFIRMACIÓN
+            const res = await fetch("/confirm", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ data: previewData }),
+            });
+            
+            // 4. DETENER SIMULACIÓN Y MOSTRAR 100%
+            clearInterval(confirmInterval);
+            updateProgress(100, '¡Actualización completada!', 'Completado');
+            await new Promise(resolve => setTimeout(resolve, 800));
+            
+            // 5. OCULTAR BARRA DE PROGRESO
+            toggleProgress(false);
+            
+            const msg = await res.json();
+            alert(msg.message || "Actualización finalizada correctamente.");
+            
+          } catch (error) {
+            // 6. MANEJAR ERRORES
+            if (confirmInterval) clearInterval(confirmInterval);
+            toggleProgress(false);
+            console.error("Error en confirmación:", error);
+            alert("Error durante la actualización: " + error.message);
+          }
+        });
   </script>
 </body>
 </html>
