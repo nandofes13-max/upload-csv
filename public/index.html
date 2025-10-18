@@ -104,44 +104,77 @@
     }
     // ========== FIN DE FUNCIONES DE PROGRESO ==========
 
-    form.addEventListener("submit", async (e) => {
+       form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const formData = new FormData();
-      formData.append("file", document.getElementById("file").files[0]);
-
-      const res = await fetch("/upload", { method: "POST", body: formData });
-      const json = await res.json();
-      previewData = json.preview || [];
-
-      if (previewData.length === 0) {
-        previewDiv.innerHTML = "<p>No se encontraron datos válidos.</p>";
+      const file = document.getElementById("file").files[0];
+      
+      if (!file) {
+        alert("Por favor selecciona un archivo");
         return;
       }
 
-      // Mostrar tabla
-      const headers = Object.keys(previewData[0]);
-      const table = `
-        <table>
-          <thead><tr>${headers.map(h => `<th>${h}</th>`).join("")}</tr></thead>
-          <tbody>
-            ${previewData.map(row => `
-              <tr>${headers.map(h => `<td>${row[h] || ""}</td>`).join("")}</tr>
-            `).join("")}
-          </tbody>
-        </table>
-        <button id="confirmBtn">✅ Confirmar actualización</button>
-      `;
-      previewDiv.innerHTML = table;
+      // 1. MOSTRAR BARRA DE PROGRESO
+      toggleProgress(true);
+      startProgressSimulation();
 
-      document.getElementById("confirmBtn").addEventListener("click", async () => {
-        const res = await fetch("/confirm", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ data: previewData }),
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        // 2. HACER LA PETICIÓN AL SERVIDOR
+        const res = await fetch("/upload", { method: "POST", body: formData });
+        const json = await res.json();
+        
+        // 3. ACTUALIZAR PROGRESO AL 100% CUANDO TERMINE
+        updateProgress(100, '¡Archivo procesado correctamente!', 'Completado');
+        
+        // 4. ESPERAR UN POCO PARA MOSTRAR EL 100%
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // 5. OCULTAR BARRA DE PROGRESO
+        toggleProgress(false);
+        
+        previewData = json.preview || [];
+
+        if (previewData.length === 0) {
+          previewDiv.innerHTML = "<p>No se encontraron datos válidos.</p>";
+          return;
+        }
+
+        // 6. MOSTRAR TABLA CON VISTA PREVIA
+        const headers = Object.keys(previewData[0]);
+        const table = `
+          <h3>Vista previa (${previewData.length} filas)</h3>
+          <table>
+            <thead><tr>${headers.map(h => `<th>${h}</th>`).join("")}</tr></thead>
+            <tbody>
+              ${previewData.slice(0, 10).map(row => `
+                <tr>${headers.map(h => `<td>${row[h] || ""}</td>`).join("")}</tr>
+              `).join("")}
+            </tbody>
+          </table>
+          ${previewData.length > 10 ? `<p><em>Mostrando 10 de ${previewData.length} filas</em></p>` : ''}
+          <button id="confirmBtn" style="margin-top: 15px; padding: 10px 20px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer;">✅ Confirmar actualización</button>
+        `;
+        previewDiv.innerHTML = table;
+
+        // 7. AGREGAR EVENTO AL BOTÓN DE CONFIRMAR
+        document.getElementById("confirmBtn").addEventListener("click", async () => {
+          const res = await fetch("/confirm", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ data: previewData }),
+          });
+          const msg = await res.json();
+          alert(msg.message || "Actualización finalizada correctamente.");
         });
-        const msg = await res.json();
-        alert(msg.message || "Actualización finalizada correctamente.");
-      });
+
+      } catch (error) {
+        // 8. MANEJAR ERRORES
+        toggleProgress(false);
+        console.error("Error:", error);
+        alert("Error al procesar el archivo: " + error.message);
+      }
     });
   </script>
 </body>
