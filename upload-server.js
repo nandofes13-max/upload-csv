@@ -14,33 +14,50 @@ app.use(express.static(path.join(process.cwd(), "public")));
 const upload = multer({ dest: "uploads/" });
 
 function toDDMMYY(raw) {
-  // LOG MÍNIMO - solo para diagnóstico
-  console.log("🔍 FECHA RAW:", JSON.stringify(raw), "Tipo:", typeof raw);
-  
   if (raw === null || raw === undefined || raw === "") return "";
 
-  // Si viene como número (serial Excel)
+  // LOG para diagnóstico
+  console.log("=== DIAGNÓSTICO FECHA ===");
+  console.log("Fecha RAW:", raw, "Tipo:", typeof raw);
+
+  // Si viene como número (serial Excel) - FORZAR DD/MM/YY
   if (typeof raw === "number") {
     const date = new Date(Math.round((raw - 25569) * 86400 * 1000));
     const dd = String(date.getUTCDate()).padStart(2, "0");
     const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
     const yy = String(date.getUTCFullYear()).slice(-2);
     const result = `${dd}/${mm}/${yy}`;
-    console.log("🔢 Desde número:", raw, "→", result);
+    console.log("🔢 Serial Excel convertido:", raw, "→", result);
+    console.log("========================");
     return result;
   }
 
   const s = String(raw).trim();
+  console.log("Como string:", s);
   
-  // Detectar formato
   const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
   if (m) {
-    const result = `${m[1].padStart(2, "0")}/${m[2].padStart(2, "0")}/${m[3].length === 4 ? m[3].slice(-2) : m[3]}`;
-    console.log("📅 Formateado:", s, "→", result);
-    return result;
+    console.log("Partes detectadas:", m[1], m[2], m[3]);
+    
+    const part1 = m[1];
+    const part2 = m[2];
+    const part3 = m[3].length === 4 ? m[3].slice(-2) : m[3];
+    
+    if (parseInt(part1) <= 12 && parseInt(part2) > 12) {
+      const result = `${part2.padStart(2, "0")}/${part1.padStart(2, "0")}/${part3}`;
+      console.log("🔄 MM/DD convertido a DD/MM:", s, "→", result);
+      console.log("========================");
+      return result;
+    } else {
+      const result = `${part1.padStart(2, "0")}/${part2.padStart(2, "0")}/${part3}`;
+      console.log("✅ DD/MM mantenido:", s, "→", result);
+      console.log("========================");
+      return result;
+    }
   }
 
-  console.log("❓ No reconocido, devuelvo:", s);
+  console.log("❓ Formato no reconocido, devuelvo:", s);
+  console.log("========================");
   return s;
 }
 
