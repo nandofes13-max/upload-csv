@@ -61,29 +61,30 @@
         }
     }
 
-    function toggleProgress(show = true) {
+     function toggleProgress(show = true) {
         const progressContainer = document.getElementById('progress-container');
         const fileInput = document.getElementById('file');
         const submitButton = form.querySelector('button');
         
         if (show) {
             progressContainer.style.display = 'block';
-            fileInput.disabled = true;
             submitButton.disabled = true;
             submitButton.textContent = 'Procesando...';
             submitButton.style.opacity = '0.6';
         } else {
             progressContainer.style.display = 'none';
-            fileInput.disabled = false;
             submitButton.disabled = false;
             submitButton.textContent = 'Subir y previsualizar';
             submitButton.style.opacity = '1';
             if (progressInterval) {
                 clearInterval(progressInterval);
             }
+            if (confirmInterval) {
+                clearInterval(confirmInterval);
+            }
         }
     }
-
+    
     function startProgressSimulation() {
         let progress = 0;
         clearInterval(progressInterval);
