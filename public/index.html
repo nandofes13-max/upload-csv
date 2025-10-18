@@ -61,9 +61,12 @@
         }
     }
 
-         function toggleProgress(show = true) {
+           function toggleProgress(show = true) {
         const progressContainer = document.getElementById('progress-container');
         const submitButton = form.querySelector('button');
+        
+        console.log("🔍 DEBUG - toggleProgress llamado con:", show);
+        console.log("🔍 DEBUG - File input files antes:", document.getElementById("file").files.length);
         
         if (show) {
             progressContainer.style.display = 'block';
@@ -82,6 +85,8 @@
                 clearInterval(confirmInterval);
             }
         }
+        
+        console.log("🔍 DEBUG - File input files después:", document.getElementById("file").files.length);
     }
     
     function startProgressSimulation() {
@@ -105,14 +110,20 @@
     }
     // ========== FIN DE FUNCIONES DE PROGRESO ==========
 
-       form.addEventListener("submit", async (e) => {
+    form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const file = document.getElementById("file").files[0];
+      
+      console.log("🔍 DEBUG - File input files:", document.getElementById("file").files);
+      console.log("🔍 DEBUG - File object:", file);
+      console.log("🔍 DEBUG - File name:", file ? file.name : "NO FILE");
       
       if (!file) {
         alert("Por favor selecciona un archivo");
         return;
       }
+
+      console.log("✅ DEBUG - Archivo encontrado, iniciando subida...");
 
       // 1. MOSTRAR BARRA DE PROGRESO
       toggleProgress(true);
