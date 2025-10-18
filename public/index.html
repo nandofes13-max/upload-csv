@@ -18,7 +18,7 @@
     <button type="submit">Subir y previsualizar</button>
    </form>
 
-  <!-- AGREGAR ESTO: Barra de progreso -->
+  <!-- BARRA DE PROGRESO -->
   <div id="progress-container" style="display: none; margin: 20px 0;">
     <div style="background: #e3f2fd; border: 1px solid #2196f3; border-radius: 8px; padding: 15px;">
       <div style="display: flex; justify-content: between; align-items: center; margin-bottom: 8px;">
@@ -35,11 +35,10 @@
   <div id="preview"></div>
 
   <script>
-        const form = document.getElementById("uploadForm");
+    const form = document.getElementById("uploadForm");
     const previewDiv = document.getElementById("preview");
     let previewData = [];
 
-    // ========== AGREGAR ESTAS 3 FUNCIONES DE PROGRESO ==========
     let progressInterval;
     let confirmInterval;
 
@@ -61,7 +60,7 @@
         }
     }
 
-           function toggleProgress(show = true) {
+    function toggleProgress(show = true) {
         const progressContainer = document.getElementById('progress-container');
         const submitButton = form.querySelector('button');
         
@@ -108,7 +107,6 @@
             }
         }, 400);
     }
-    // ========== FIN DE FUNCIONES DE PROGRESO ==========
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -171,7 +169,7 @@
         previewDiv.innerHTML = table;
 
         // 7. AGREGAR EVENTO AL BOTÓN DE CONFIRMAR
-               document.getElementById("confirmBtn").addEventListener("click", async () => {
+        document.getElementById("confirmBtn").addEventListener("click", async () => {
           // 1. MOSTRAR PROGRESO PARA CONFIRMACIÓN
           toggleProgress(true);
           updateProgress(0, 'Iniciando actualización en Jumpseller...', 'Actualizando productos');
@@ -218,6 +216,13 @@
             alert("Error durante la actualización: " + error.message);
           }
         });
+
+      } catch (error) {
+        toggleProgress(false);
+        console.error("Error:", error);
+        alert("Error al procesar el archivo: " + error.message);
+      }
+    });
   </script>
 </body>
 </html>
