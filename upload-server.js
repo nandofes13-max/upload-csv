@@ -11,7 +11,39 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(process.cwd(), "public")));
 
+// Middleware de autenticación
+const requireAuth = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Acceso no autorizado' });
+  }
+  
+  const token = authHeader.substring(7); // Remover "Bearer "
+  const expectedToken = process.env.ACCESS_TOKEN;
+  
+  if (!expectedToken || token !== expectedToken) {
+    return res.status(401).json({ error: 'Token inválido' });
+  }
+  
+  next();
+};
+
 const upload = multer({ dest: "uploads/" });
+
+// Ruta de login
+app.post("/login", (req, res) => {
+  const { password } = req.body;
+  const expectedPassword = process.env.ACCESS_PASSWORD;
+  
+  if (!expectedPassword || password !== expectedPassword) {
+    return res.status(401).json({ error: 'Contraseña incorrecta' });
+  }
+  
+  // Generar token de sesión
+  const token = process.env.ACCESS_TOKEN || 'default-token-' + Date.now();
+  res.json({ token, message: 'Login exitoso' });
+});
 
 function toDDMMYY(raw) {
   if (raw === null || raw === undefined || raw === "") return "";
@@ -78,7 +110,7 @@ function normalizeProductFromApi(obj) {
 // ------------------
 // RUTA: subida y previsualización
 // ------------------
-app.post("/upload", upload.single("file"), async (req, res) => {
+app.post("/upload", requireAuth, upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No se subió archivo" });
 
   const filePath = req.file.path;
@@ -196,7 +228,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 // ------------------
 // RUTA: confirmar y actualizar TODOS los productos
 // ------------------
-app.post("/confirm", async (req, res) => {
+app.post("/confirm", requireAuth, async (req, res) => {
   const payload = req.body?.data;
   if (!Array.isArray(payload) || payload.length === 0)
     return res.status(400).json({ error: "No hay datos para actualizar" });
