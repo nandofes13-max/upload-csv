@@ -12,29 +12,97 @@
   </style>
 </head>
 <body>
-  <h1>📤 Subir archivo Excel (.xls o .xlsx)</h1>
-  <form id="uploadForm">
-    <input type="file" id="file" name="file" accept=".xls,.xlsx" required />
-    <button type="submit">Subir y previsualizar</button>
-   </form>
-
-  <!-- BARRA DE PROGRESO -->
-  <div id="progress-container" style="display: none; margin: 20px 0;">
-    <div style="background: #e3f2fd; border: 1px solid #2196f3; border-radius: 8px; padding: 15px;">
-      <div style="display: flex; justify-content: between; align-items: center; margin-bottom: 8px;">
-        <strong id="progress-status" style="color: #1976d2;">Procesando archivo...</strong>
-        <span id="progress-percent" style="background: #1976d2; color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px;">0%</span>
-      </div>
-      <div style="background: #e0e0e0; border-radius: 10px; height: 20px; overflow: hidden;">
-        <div id="progress-bar" style="background: linear-gradient(45deg, #2196f3, #1976d2); height: 100%; width: 0%; transition: width 0.3s ease; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: bold;"></div>
-      </div>
-      <small id="progress-message" style="color: #666; display: block; margin-top: 8px;">Iniciando procesamiento...</small>
+  <!-- CONTENEDOR DE LOGIN -->
+  <div id="login-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 1000;">
+    <div id="login-form" style="background: white; padding: 30px; border-radius: 10px; text-align: center; min-width: 300px;">
+      <h2>🔒 Acceso al Sistema</h2>
+      <p>Ingrese la contraseña para continuar</p>
+      <input type="password" id="password" placeholder="Contraseña" style="width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px;" />
+      <button onclick="login()" style="width: 100%; padding: 10px; background: #2196f3; color: white; border: none; border-radius: 5px; cursor: pointer;">
+        Ingresar
+      </button>
+      <p id="login-error" style="color: red; margin-top: 10px; display: none;">Contraseña incorrecta</p>
     </div>
   </div>
 
-  <div id="preview"></div>
+  <!-- CONTENIDO PRINCIPAL (oculto inicialmente) -->
+  <div id="main-content" style="display: none;">
+    <h1>📤 Subir archivo Excel (.xls o .xlsx)</h1>
+    <form id="uploadForm">
+      <input type="file" id="file" name="file" accept=".xls,.xlsx" required />
+      <button type="submit">Subir y previsualizar</button>
+    </form>
 
+    <!-- BARRA DE PROGRESO -->
+    <div id="progress-container" style="display: none; margin: 20px 0;">
+      <div style="background: #e3f2fd; border: 1px solid #2196f3; border-radius: 8px; padding: 15px;">
+        <div style="display: flex; justify-content: between; align-items: center; margin-bottom: 8px;">
+          <strong id="progress-status" style="color: #1976d2;">Procesando archivo...</strong>
+          <span id="progress-percent" style="background: #1976d2; color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px;">0%</span>
+        </div>
+        <div style="background: #e0e0e0; border-radius: 10px; height: 20px; overflow: hidden;">
+          <div id="progress-bar" style="background: linear-gradient(45deg, #2196f3, #1976d2); height: 100%; width: 0%; transition: width 0.3s ease; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: bold;"></div>
+        </div>
+        <small id="progress-message" style="color: #666; display: block; margin-top: 8px;">Iniciando procesamiento...</small>
+      </div>
+    </div>
+
+    <div id="preview"></div>
+  </div>
+  
   <script>
+
+        // ========== SISTEMA DE AUTENTICACIÓN ==========
+    let authToken = null;
+
+    // Función de login
+    async function login() {
+      const password = document.getElementById('password').value;
+      const errorElement = document.getElementById('login-error');
+      
+      try {
+        const response = await fetch('/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          authToken = data.token;
+          document.getElementById('login-container').style.display = 'none';
+          document.getElementById('main-content').style.display = 'block';
+          // Guardar token en sessionStorage
+          sessionStorage.setItem('authToken', authToken);
+        } else {
+          errorElement.style.display = 'block';
+        }
+      } catch (error) {
+        errorElement.style.display = 'block';
+      }
+    }
+
+    // Verificar si ya está autenticado al cargar la página
+    document.addEventListener('DOMContentLoaded', function() {
+      const savedToken = sessionStorage.getItem('authToken');
+      if (savedToken) {
+        authToken = savedToken;
+        document.getElementById('login-container').style.display = 'none';
+        document.getElementById('main-content').style.display = 'block';
+      }
+    });
+
+    // Función para agregar token a las peticiones fetch
+    function authFetch(url, options = {}) {
+      const headers = {
+        'Authorization': `Bearer ${authToken}`,
+        ...options.headers
+      };
+      
+      return fetch(url, { ...options, headers });
+    }
+    // ========== FIN SISTEMA DE AUTENTICACIÓN ==========
+    
     const form = document.getElementById("uploadForm");
     const previewDiv = document.getElementById("preview");
     let previewData = [];
@@ -132,7 +200,7 @@
         formData.append("file", file);
 
         // 2. HACER LA PETICIÓN AL SERVIDOR
-        const res = await fetch("/upload", { method: "POST", body: formData });
+        const res = await authFetch("/upload", { method: "POST", body: formData });
         const json = await res.json();
         
         // 3. ACTUALIZAR PROGRESO AL 100% CUANDO TERMINE
@@ -194,7 +262,7 @@
             }, 300);
 
             // 3. HACER LA PETICIÓN DE CONFIRMACIÓN
-            const res = await fetch("/confirm", {
+            const res = await authFetch("/confirm", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ data: previewData }),
